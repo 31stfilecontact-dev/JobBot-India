@@ -1,20 +1,35 @@
-modules = ["nodejs-24"]
+run = "python3 app.py"
+entrypoint = "app.py"
+modules = ["python-3.11"]
 
-[deployment]
-router = "application"
-deploymentTarget = "autoscale"
+[nix]
+channel = "stable-23_11"
+packages = ["xcodebuild", "zlib"]
 
-[deployment.postBuild]
-args = ["pnpm", "store", "prune"]
-env = { "CI" = "true" }
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [workflows]
 runButton = "Project"
 
-[agent]
-stack = "PNPM_WORKSPACE"
-expertMode = true
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
 
-[postMerge]
-path = "scripts/post-merge.sh"
-timeoutMs = 20000
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "JobBot India"
+
+[[workflows.workflow]]
+name = "JobBot India"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 app.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"

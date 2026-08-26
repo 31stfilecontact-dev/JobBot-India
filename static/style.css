@@ -1,0 +1,31 @@
+* { box-sizing: border-box; }
+body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f4f5f7; margin: 0; color: #1f2430; }
+.navbar { background: #1f2430; color: white; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+.navbar .brand { font-weight: 700; font-size: 1.1em; }
+.nav-links a { color: #cfd4dc; text-decoration: none; margin-left: 20px; }
+.nav-links a:hover { color: white; }
+.container { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+.card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.flash { background: #e6f4ea; color: #1e6b34; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; }
+label { display: block; margin-top: 12px; margin-bottom: 4px; font-size: 0.9em; color: #555; }
+input[type=text], input[type=email], input[type=url], input[type=number], input[type=file], textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid #d5d9e0; border-radius: 6px; font-size: 0.95em;
+}
+.checkbox-row { display: flex; gap: 16px; margin-top: 6px; }
+.checkbox-row label { display: flex; align-items: center; gap: 6px; margin: 0; }
+.btn { padding: 9px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.9em; margin-top: 14px; }
+.btn-primary { background: #2f6fed; color: white; }
+.btn-auto { background: #eb8f00; color: white; margin-bottom: 12px; }
+.btn-small { padding: 5px 10px; font-size: 0.8em; margin-top: 0; }
+.status-tabs { display: flex; gap: 16px; margin-bottom: 14px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+.status-tabs a { text-decoration: none; color: #555; font-size: 0.9em; }
+.status-tabs a.active { color: #2f6fed; font-weight: 600; }
+.job-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.job-table th, .job-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 0.9em; }
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75em; background: #eee; }
+.badge-new { background: #e0e7ff; color: #3346c9; }
+.badge-applied { background: #d7f5e0; color: #1e6b34; }
+.badge-failed { background: #fde0e0; color: #b3261e; }
+.badge-skipped { background: #eee; color: #666; }
+.note { font-size: 0.8em; color: #888; }
+hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }

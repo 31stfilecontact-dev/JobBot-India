@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Applied Report</h2>
+  <table class="job-table">
+    <thead>
+      <tr><th>Title</th><th>Company</th><th>Method</th><th>Status</th><th>When</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td><a href="{{ job.job_url }}" target="_blank">{{ job.title }}</a></td>
+        <td>{{ job.company }}</td>
+        <td>{{ job.apply_method or '-' }}</td>
+        <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+        <td>{{ job.applied_at.strftime('%d %b %Y, %H:%M') if job.applied_at else '-' }}</td>
+        <td class="note">{{ job.notes or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No applications yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

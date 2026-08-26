@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Search jobs</h2>
+  <form method="POST" action="{{ url_for('search') }}" class="search-form">
+    <label>Keywords (comma separated)</label>
+    <input type="text" name="keywords" value="{{ profile.keywords }}" placeholder="e.g. Chartered Accountant, Corporate Tax, Direct Tax">
+
+    <label>Cities (comma separated)</label>
+    <input type="text" name="cities" value="{{ profile.preferred_cities }}" placeholder="e.g. Hyderabad, Bengaluru">
+
+    <label>Sources</label>
+    <div class="checkbox-row">
+      <label><input type="checkbox" name="sources" value="naukri" checked> Naukri</label>
+      <label><input type="checkbox" name="sources" value="linkedin" checked> LinkedIn</label>
+      <label><input type="checkbox" name="sources" value="indeed" checked> Indeed</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">🔍 Search Now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Jobs</h2>
+  <div class="status-tabs">
+    <a href="{{ url_for('index', status='new') }}" class="{{ 'active' if status_filter=='new' }}">New ({{ counts.new }})</a>
+    <a href="{{ url_for('index', status='applied') }}" class="{{ 'active' if status_filter=='applied' }}">Applied ({{ counts.applied }})</a>
+    <a href="{{ url_for('index', status='failed') }}" class="{{ 'active' if status_filter=='failed' }}">Failed ({{ counts.failed }})</a>
+    <a href="{{ url_for('index', status='skipped') }}" class="{{ 'active' if status_filter=='skipped' }}">Skipped ({{ counts.skipped }})</a>
+    <a href="{{ url_for('index', status='all') }}" class="{{ 'active' if status_filter=='all' }}">All</a>
+  </div>
+
+  {% if status_filter == 'new' and jobs %}
+  <form method="POST" action="{{ url_for('auto_apply') }}" onsubmit="return confirm('Run auto-apply on all {{ counts.new }} new jobs?');">
+    <button type="submit" class="btn btn-auto">⚡ Run Auto-Apply on All New Jobs</button>
+  </form>
+  {% endif %}
+
+  <table class="job-table">
+    <thead>
+      <tr><th>Title</th><th>Company</th><th>Location</th><th>Source</th><th>Status</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td><a href="{{ job.job_url }}" target="_blank">{{ job.title }}</a></td>
+        <td>{{ job.company }}</td>
+        <td>{{ job.location }}</td>
+        <td><span class="badge badge-{{ job.source }}">{{ job.source }}</span></td>
+        <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+        <td>
+          {% if job.status == 'new' %}
+          <form method="POST" action="{{ url_for('apply_single', job_id=job.id) }}" style="display:inline">
+            <button type="submit" class="btn btn-small btn-primary">Apply</button>
+          </form>
+          <form method="POST" action="{{ url_for('skip', job_id=job.id) }}" style="display:inline">
+            <button type="submit" class="btn btn-small">Skip</button>
+          </form>
+          {% elif job.notes %}
+          <span class="note">{{ job.notes }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No jobs here yet — run a search above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
