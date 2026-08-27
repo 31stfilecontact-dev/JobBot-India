@@ -15,6 +15,10 @@ class Job(db.Model):
     ats_type = db.Column(db.String(50))         # greenhouse / lever / workday / unknown
     hr_email = db.Column(db.String(200))        # extracted email fallback
 
+    role_category = db.Column(db.String(100))  # e.g. "Corporate Tax", "Direct Tax", "GST"
+    exp_min_years = db.Column(db.Float)         # parsed from JD, best-effort
+    exp_max_years = db.Column(db.Float)
+
     status = db.Column(db.String(30), default="new")
     # new -> discovered, applied -> applied, skipped -> user skipped, failed -> apply attempt failed
 
@@ -64,6 +68,23 @@ class Profile(db.Model):
 
     # SMTP config for email auto-apply (stored, but recommend using env vars instead)
     smtp_email = db.Column(db.String(200), default="")
+
+    exp_filter_min = db.Column(db.Float, default=0)
+    exp_filter_max = db.Column(db.Float, default=99)
+    role_filter = db.Column(db.String(200), default="")
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class TrackedCompany(db.Model):
+    """Company career portals the user wants to search directly."""
+    id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(200), nullable=False)
+    ats_type = db.Column(db.String(50))       # greenhouse / lever / generic
+    board_token = db.Column(db.String(200))   # greenhouse/lever slug, if applicable
+    career_url = db.Column(db.String(1000))   # generic careers page URL
+    added_at = db.Column(db.DateTime, default=db.func.now())
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

@@ -8,7 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
 
-from models import db, Job, Profile
+from models import db, Job, Profile, TrackedCompany
 from scrapers.naukri import search_naukri
 from scrapers.linkedin import search_linkedin
 from scrapers.indeed import search_indeed
@@ -16,6 +16,12 @@ from scrapers.career_page import find_career_page, extract_email
 from autofill.greenhouse import apply_greenhouse
 from autofill.lever import apply_lever
 from autofill.emailer import send_application_email
+from scrapers.company_portal import (
+    fetch_greenhouse_jobs,
+    fetch_lever_jobs,
+    fetch_generic_career_page_jobs,
+    parse_experience_range,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -27,8 +33,37 @@ app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", "dev-secret-change-me"
 app.logger.setLevel(logging.INFO)
 db.init_app(app)
 
+
+def ensure_sqlite_schema():
+    """Add addon columns without deleting existing SQLite data."""
+    additions = {
+        "job": {
+            "role_category": "VARCHAR(100)",
+            "exp_min_years": "FLOAT",
+            "exp_max_years": "FLOAT",
+        },
+        "profile": {
+            "exp_filter_min": "FLOAT DEFAULT 0",
+            "exp_filter_max": "FLOAT DEFAULT 99",
+            "role_filter": "VARCHAR(200) DEFAULT ''",
+        },
+    }
+    inspector = db.session.connection()
+    for table_name, columns in additions.items():
+        existing = {
+            row[1] for row in inspector.exec_driver_sql(f"PRAGMA table_info({table_name})")
+        }
+        for column_name, column_type in columns.items():
+            if column_name not in existing:
+                inspector.exec_driver_sql(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                )
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
+    ensure_sqlite_schema()
     if not Profile.query.first():
         db.session.add(Profile())
         db.session.commit()
@@ -130,17 +165,47 @@ def start_scheduler():
 @app.route("/")
 def index():
     status_filter = request.args.get("status", "new")
+    role_filter = request.args.get("role", "").strip()
+    exp_min = request.args.get("exp_min", type=float)
+    exp_max = request.args.get("exp_max", type=float)
+
     query = Job.query
     if status_filter != "all":
         query = query.filter_by(status=status_filter)
+    if role_filter:
+        query = query.filter(Job.title.ilike(f"%{role_filter}%"))
+
     jobs = query.order_by(Job.discovered_at.desc()).all()
+
+    # Experience ranges can be partial, so apply this part in Python.
+    if exp_min is not None or exp_max is not None:
+        def in_range(job):
+            if job.exp_min_years is None and job.exp_max_years is None:
+                return True
+            lo = job.exp_min_years if job.exp_min_years is not None else 0
+            hi = job.exp_max_years if job.exp_max_years is not None else 99
+            want_lo = exp_min if exp_min is not None else 0
+            want_hi = exp_max if exp_max is not None else 99
+            return lo <= want_hi and hi >= want_lo
+
+        jobs = [job for job in jobs if in_range(job)]
+
     counts = {
         "new": Job.query.filter_by(status="new").count(),
         "applied": Job.query.filter_by(status="applied").count(),
         "failed": Job.query.filter_by(status="failed").count(),
         "skipped": Job.query.filter_by(status="skipped").count(),
     }
-    return render_template("index.html", jobs=jobs, counts=counts, status_filter=status_filter, profile=get_profile())
+    return render_template(
+        "index.html",
+        jobs=jobs,
+        counts=counts,
+        status_filter=status_filter,
+        role_filter=role_filter,
+        exp_min=exp_min,
+        exp_max=exp_max,
+        profile=get_profile(),
+    )
 
 
 # ---------- Search ----------
@@ -180,6 +245,87 @@ def skip(job_id):
 def auto_apply():
     results = run_auto_apply()
     flash(f"Auto-apply run finished — {results['applied']} applied, {results['failed']} failed/need manual review.")
+    return redirect(url_for("index"))
+
+
+# ---------- Company portal tracking ----------
+
+@app.route("/portals", methods=["GET"])
+def portals():
+    companies = TrackedCompany.query.order_by(TrackedCompany.added_at.desc()).all()
+    return render_template("portals.html", companies=companies)
+
+
+@app.route("/portals/add", methods=["POST"])
+def portals_add():
+    name = request.form.get("display_name", "").strip()
+    ats_type = request.form.get("ats_type", "generic")
+    board_token = request.form.get("board_token", "").strip()
+    career_url = request.form.get("career_url", "").strip()
+
+    if not name:
+        flash("Company name is required.")
+        return redirect(url_for("portals"))
+
+    company = TrackedCompany(
+        display_name=name,
+        ats_type=ats_type,
+        board_token=board_token or None,
+        career_url=career_url or None,
+    )
+    db.session.add(company)
+    db.session.commit()
+    flash(f"Added {name} to tracked companies.")
+    return redirect(url_for("portals"))
+
+
+@app.route("/portals/<int:company_id>/delete", methods=["POST"])
+def portals_delete(company_id):
+    company = TrackedCompany.query.get_or_404(company_id)
+    db.session.delete(company)
+    db.session.commit()
+    return redirect(url_for("portals"))
+
+
+@app.route("/portals/search", methods=["POST"])
+def portals_search():
+    companies = TrackedCompany.query.all()
+    added = 0
+    for company in companies:
+        if company.ats_type == "greenhouse" and company.board_token:
+            results = fetch_greenhouse_jobs(company.board_token)
+        elif company.ats_type == "lever" and company.board_token:
+            results = fetch_lever_jobs(company.board_token)
+        elif company.career_url:
+            results = fetch_generic_career_page_jobs(company.career_url, company.display_name)
+        else:
+            continue
+
+        for result in results:
+            if not result.get("job_url"):
+                continue
+            if Job.query.filter_by(job_url=result["job_url"]).first():
+                continue
+            exp_min_years, exp_max_years = parse_experience_range(
+                result.get("raw_content", "")
+            )
+            db.session.add(
+                Job(
+                    title=result.get("title", "Unknown"),
+                    company=company.display_name,
+                    location=result.get("location", ""),
+                    source="company_portal",
+                    job_url=result["job_url"],
+                    career_page_url=result["job_url"],
+                    ats_type=result.get("ats_type"),
+                    exp_min_years=exp_min_years,
+                    exp_max_years=exp_max_years,
+                    status="new",
+                )
+            )
+            added += 1
+    db.session.commit()
+    flash(f"Company portal search complete — {added} new jobs added.")
     return redirect(url_for("index"))
 
 

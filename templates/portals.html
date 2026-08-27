@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Company Portals</h2>
+  <p class="note">Add companies you specifically want to target. Jobs are pulled directly from their own careers page — not via Naukri/LinkedIn/Indeed.</p>
+
+  <form method="POST" action="{{ url_for('portals_add') }}" class="search-form">
+    <label>Company display name</label>
+    <input type="text" name="display_name" placeholder="e.g. Deloitte India" required>
+
+    <label>Portal type</label>
+    <select name="ats_type" onchange="document.getElementById('token-help').style.display = this.value === 'generic' ? 'none' : 'block'; document.getElementById('url-help').style.display = this.value === 'generic' ? 'block' : 'none';">
+      <option value="greenhouse">Greenhouse</option>
+      <option value="lever">Lever</option>
+      <option value="generic">Other / custom careers page</option>
+    </select>
+
+    <div id="token-help">
+      <label>Board token / slug (from the company's careers URL)</label>
+      <input type="text" name="board_token" placeholder="e.g. for boards.greenhouse.io/acme the token is 'acme'">
+    </div>
+
+    <div id="url-help" style="display:none">
+      <label>Careers page URL</label>
+      <input type="url" name="career_url" placeholder="https://company.com/careers">
+    </div>
+
+    <button type="submit" class="btn btn-primary">+ Add Company</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Tracked Companies ({{ companies|length }})</h2>
+  {% if companies %}
+  <form method="POST" action="{{ url_for('portals_search') }}">
+    <button type="submit" class="btn btn-auto">🔍 Search All Tracked Company Portals</button>
+  </form>
+  {% endif %}
+
+  <table class="job-table">
+    <thead><tr><th>Company</th><th>Type</th><th>Source</th><th></th></tr></thead>
+    <tbody>
+      {% for company in companies %}
+      <tr>
+        <td>{{ company.display_name }}</td>
+        <td><span class="badge">{{ company.ats_type }}</span></td>
+        <td class="note">{{ company.board_token or company.career_url or '-' }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('portals_delete', company_id=company.id) }}">
+            <button type="submit" class="btn btn-small">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">No companies tracked yet — add one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

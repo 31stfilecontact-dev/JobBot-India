@@ -1,0 +1,34 @@
+Let me check what the current codebase actually looks like — I see `package.json`, `pnpm-lock.yaml`, and `tsconfig.json` in there alongside the Python files, which suggests Replit's Agent may have restructured things since I built the original scaffold.Good news: the repo structure (`app.py`, `models.py`, `scrapers/`, `autofill/`, `templates/`, `static/`) matches what I originally built — the `package.json`/`tsconfig` files are just Replit's standard scaffolding it adds to every project now, not a sign the app got rewritten in Node. So the Flask/Python core should still be intact.
+
+One clarification on terms: "co portal" search (jobs listed directly on a company's own careers page, rather than via Naukri/LinkedIn/Indeed) is actually more reliable to build than scraping aggregators, because Greenhouse and Lever — the two ATSes we already integrate for auto-apply — both expose free, structured **public JSON APIs per company**. So instead of scraping HTML, you maintain a list of companies you're targeting, and the app pulls their live openings directly.
+
+Here's what I'm adding:Now the diff for `index.html` (filter bar) and `base.html` (nav link):Let me sanity-check the syntax of the new scraper file:**What's in the zip:**
+- `scrapers_company_portal.py` → save as `scrapers/company_portal.py`
+- `models_additions.py` → merge these fields/class into your existing `models.py`
+- `app_additions.py` → merge these routes into your existing `app.py` (note: it **replaces** the current `index()` route)
+- `templates_portals.html` → save as `templates/portals.html`
+- `templates_edits.txt` → small manual edits for `base.html` and `index.html`
+
+**Prompt for Replit Agent** to wire it all in:
+
+> I've added new files to this repo: `scrapers/company_portal.py` (new), and three files with instructions for merging into existing code: `models_additions.py`, `app_additions.py`, and `templates_edits.txt`. Please:
+> 1. Merge the new fields and the `TrackedCompany` class from `models_additions.py` into `models.py`, keeping everything already there.
+> 2. Merge the new imports and routes from `app_additions.py` into `app.py` — note it includes a replacement for the existing `index()` route (adds role + experience filtering), so replace that function entirely rather than adding a duplicate.
+> 3. Save `templates_portals.html` as `templates/portals.html`.
+> 4. Apply the two snippets in `templates_edits.txt` to `base.html` and `index.html`.
+> 5. Delete the three merge-instruction files (`models_additions.py`, `app_additions.py`, `templates_edits.txt`) once merged — they're not meant to be part of the running app.
+> 6. Run `db.create_all()` context (restart the app) so the new `TrackedCompany` table and new `Job`/`Profile` columns get created — note: SQLite won't auto-add new columns to an existing table, so if the app errors on missing columns, either delete `jobbot.db` to start fresh (I'll lose existing job history) or add a small migration script using `ALTER TABLE` for the new columns. Ask me which I'd prefer before deleting any data.
+> 7. Confirm `/portals` loads, I can add a company (test with Greenhouse token `stripe` to confirm the API call works), and the new Role/Experience filter fields appear on the dashboard.
+> 8. Don't touch the scraping/auto-apply logic for Naukri/LinkedIn/Indeed/Greenhouse/Lever apply — this is additive only.
+
+That step 6 warning matters — SQLite doesn't auto-migrate schema changes, so flag it now rather than have the agent silently wipe your job history.
+
+**Other improvements worth considering, roughly in priority order:**
+
+- **Company shortlist for CA/finance roles specifically** — since discovery via Greenhouse/Lever mostly surfaces tech companies, add niche portals more relevant to your field: ICAI's Career Ascent, CAclubindia's jobs section, and Instahyre/iimjobs for senior corporate finance roles, via the same generic-fallback scraper.
+- **Duplicate/near-duplicate detection** — same job often appears on Naukri and the company's own site; dedupe by company+title match, not just exact URL.
+- **JD keyword match score** — since you already parse `raw_content` for experience, also score each job's description against your keywords/profile so higher-fit jobs sort to the top.
+- **Manual status tracking** — add "Interview Scheduled," "Rejected," "Offer" statuses you can set yourself on applied jobs, so the report becomes a real pipeline tracker, not just an apply log.
+- **Export to Excel/CSV** — quick win, useful for your own records outside the app.
+- **Rate limiting / backoff** on the scrapers — right now a big batch search could hit Naukri/LinkedIn fast enough to get temporarily blocked; adding a short delay between requests reduces that risk.
+- **CAPTCHA/blocked detection** — right now a blocked scraper just silently returns 0 results; log a distinct "source unreachable" flag so you know to check it rather than assuming there are no jobs.
