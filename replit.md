@@ -1,45 +1,65 @@
-# [Project name]
+# JobBot India
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Flask app for finding India-focused jobs and tracking manual or supported
+auto-apply attempts through employer career pages.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Run with `python3 app.py`.
+- The Replit workflow `JobBot India` serves the app on port 5000.
+- Python dependencies are declared in `requirements.txt`.
+- The app creates its local SQLite database (`jobbot.db`) and `uploads/`
+  directory on first start.
+- Optional email auto-apply configuration uses the `SMTP_USER`,
+  `SMTP_PASS`, `SMTP_HOST`, and `SMTP_PORT` environment variables. Do not
+  commit these values.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.12
+- Flask 3
+- Flask-SQLAlchemy with SQLite
+- Requests, BeautifulSoup, and lxml for job discovery
+- APScheduler for daily profile-driven automation
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `app.py` — Flask routes, persistence, scheduler, and orchestration
+- `models.py` — SQLAlchemy models for the profile and jobs
+- `scrapers/` — Naukri, LinkedIn, Indeed, and career-page discovery
+- `autofill/` — Greenhouse, Lever, and email application handlers
+- `templates/` — dashboard, profile, and report pages
+- `static/style.css` — application styling
+- `uploads/` — local resume uploads
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- SQLite is used for the local Replit app, keeping setup self-contained.
+- Job discovery sources are used for finding listings; direct automated
+  applications are routed through employer ATS pages or email instead of
+  applying on LinkedIn or Naukri.
+- The scheduler runs once daily at 09:00 in the `Asia/Kolkata` timezone.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Search jobs by comma-separated keywords and cities.
+- Review new jobs and open original listings.
+- Save a profile and resume for supported application flows.
+- Track applied, failed, and manually reviewable applications.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_No project-specific preferences recorded._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Fill in `Profile & Data` before searching or using auto-apply.
+- Search pages may change their HTML structure, so scrapers can require
+  selector updates when an upstream site changes.
+- Workday, SmartRecruiters, and other JavaScript-heavy ATS forms are detected
+  but require manual application in this version.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `README.md` for the supported auto-apply methods and legal/ethical
+  boundaries.
