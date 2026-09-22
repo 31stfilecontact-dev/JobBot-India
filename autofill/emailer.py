@@ -32,23 +32,34 @@ def send_application_email(to_email: str, job_title: str, company: str, profile:
     if custom_template:
         try:
             body = custom_template.format(
-                job_title=job_title, company=company, full_name=profile.get("full_name", "")
+                job_title=job_title, company=company, full_name=profile.get("full_name", "Aman Mehta")
             )
         except Exception:
             body = custom_template
     else:
+        full_name = profile.get("full_name", "Aman Mehta")
+        phone = profile.get("phone", "+91 9052572066")
+        email = profile.get("email", "amanmehta8799@gmail.com")
+        location = profile.get("current_city", "Hyderabad, India")
         body = (
             f"Dear Hiring Team at {company},\n\n"
-            f"I am writing to express my strong interest in the {job_title} role.\n"
-            f"With my background in software development and proven expertise, I am confident in delivering immediate value to your team.\n\n"
-            f"Please find my resume attached.\n\n"
-            f"Best regards,\n"
-            f"{profile.get('full_name', '')}\n"
-            f"Phone: {profile.get('phone', '')}\n"
-            f"Email: {profile.get('email', '')}\n"
-            f"LinkedIn: {profile.get('linkedin_url', '')}\n"
+            f"I am writing to express my strong interest in the {job_title} opportunity at {company}.\n\n"
+            f"I am a Chartered Accountant currently working as Assistant Manager (Corporate International Tax) at BSR & Co. LLP / KPMG, with prior Big 4 consulting experience at Ernst & Young (EY). Over 5+ years of practice, I have advised corporate clients on direct tax compliance, FEMA regulations, cross-border restructuring, and statutory/tax audits.\n\n"
+            f"Key highlights of my qualifications:\n"
+            f"• Corporate & International Tax: End-to-end direct tax compliance for 14+ corporate clients, withholding tax (Form 15CA/15CB, 10F), and representation before CIT(Appeals) / NFAC.\n"
+            f"• FEMA & Cross-Border Structuring: Permanent Establishment (PE) exposure evaluations for GCCs, FC-GPR/FLA filings, and AD bank compliance.\n"
+            f"• Financial Reporting & Audit: Standalone and consolidated financial statement preparation under Ind AS / Accounting Standards, with extensive statutory & tax audit leadership.\n"
+            f"• Technical Proficiencies: Microsoft Dynamics, Tally, advanced financial modeling, and GST reconciliation (GSTR 2A/2B).\n\n"
+            f"Please find my resume attached for your review. I look forward to the opportunity to discuss how my skill set aligns with your team's objectives.\n\n"
+            f"Warm regards,\n"
+            f"{full_name}\n"
+            f"Chartered Accountant\n"
+            f"Phone: {phone}\n"
+            f"Email: {email}\n"
+            f"Location: {location}\n"
         )
     msg.set_content(body)
+
 
     if resume_path and os.path.exists(resume_path):
         with open(resume_path, "rb") as f:

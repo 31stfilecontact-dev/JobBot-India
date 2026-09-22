@@ -191,19 +191,27 @@ try:
     with app.app_context():
         db.create_all()
         ensure_sqlite_schema()
-        if not Profile.query.first():
-            db.session.add(Profile(
-                full_name="Aman Mehta",
-                email="amanmehta080799@gmail.com",
-                phone="+91 9876543210",
-                current_city="Bengaluru",
-                keywords="Software Engineer, Python Developer, Backend Engineer",
-                preferred_cities="Bengaluru, Hyderabad, Pune, Remote",
-                smtp_email="amanmehta080799@gmail.com",
-            ))
-            db.session.commit()
+        profile = Profile.query.first()
+        if not profile:
+            profile = Profile()
+            db.session.add(profile)
+        
+        # Ensure profile matches user's exact Chartered Accountant details
+        profile.full_name = "Aman Mehta"
+        profile.email = "amanmehta8799@gmail.com"
+        profile.phone = "9052572066"
+        profile.current_city = "Hyderabad"
+        profile.current_company = "BSR & Co. LLP / KPMG"
+        profile.current_title = "Assistant Manager (CIT)"
+        profile.total_experience_years = 5.5
+        profile.work_authorization = "Authorized to work in India"
+        profile.keywords = "Chartered Accountant, Corporate Tax, Direct Tax, International Tax, FEMA, Statutory Audit, Financial Reporting, Assistant Manager Finance"
+        profile.preferred_cities = "Hyderabad, Bengaluru, Mumbai, Pune, Remote"
+        profile.smtp_email = "amanmehta080799@gmail.com"
+        db.session.commit()
 except Exception as e:
     app.logger.warning(f"DB startup init: {e}")
+
 
 
 
@@ -359,12 +367,16 @@ def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
     if unanswered_fields:
         job.set_unanswered_fields(unanswered_fields)
 
-    if dry_run:
+    if "Easy Apply" in note or apply_method == "linkedin_easy_apply":
+        job.status = "easy_apply"
+        job.apply_method = "linkedin_easy_apply"
+    elif dry_run:
         job.status = "dry_run" if ok else "failed"
     else:
         job.status = "applied" if ok else "failed"
         if ok:
             job.applied_at = datetime.utcnow()
+
 
     # Record Audit Log
     audit = AuditLog(
@@ -494,12 +506,14 @@ def index():
 
     counts = {
         "new": Job.query.filter_by(status="new").count(),
+        "easy_apply": Job.query.filter_by(status="easy_apply").count(),
         "applied": Job.query.filter_by(status="applied").count(),
         "dry_run": Job.query.filter_by(status="dry_run").count(),
         "failed": Job.query.filter_by(status="failed").count(),
         "skipped": Job.query.filter_by(status="skipped").count(),
         "all": Job.query.count(),
     }
+
 
     return render_template(
         "index.html",

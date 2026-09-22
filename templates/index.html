@@ -91,6 +91,7 @@
     <!-- Status Tabs -->
     <div class="status-tabs">
       <a href="{{ url_for('index', status='new') }}" class="tab-btn {{ 'active' if status_filter=='new' }}">New ({{ counts.new }})</a>
+      <a href="{{ url_for('index', status='easy_apply') }}" class="tab-btn {{ 'active' if status_filter=='easy_apply' }}" style="color: #0a66c2; font-weight: 600;">⚡ Easy Apply ({{ counts.easy_apply }})</a>
       <a href="{{ url_for('index', status='applied') }}" class="tab-btn {{ 'active' if status_filter=='applied' }}">Applied ({{ counts.applied }})</a>
       <a href="{{ url_for('index', status='dry_run') }}" class="tab-btn {{ 'active' if status_filter=='dry_run' }}">Dry-Run ({{ counts.dry_run }})</a>
       <a href="{{ url_for('index', status='failed') }}" class="tab-btn {{ 'active' if status_filter=='failed' }}">Failed ({{ counts.failed }})</a>
@@ -98,6 +99,7 @@
       <a href="{{ url_for('index', status='all') }}" class="tab-btn {{ 'active' if status_filter=='all' }}">All ({{ counts.all }})</a>
     </div>
   </div>
+
 
   <!-- Filter Toolbar -->
   <form method="GET" action="{{ url_for('index') }}" style="background: #f8fafc; padding: 14px; border-radius: var(--radius); margin-bottom: 18px; border: 1px solid var(--border);">
@@ -244,10 +246,23 @@
                 <form method="POST" action="{{ url_for('skip', job_id=job.id) }}" style="display:inline">
                   <button type="submit" class="btn btn-small btn-light" title="Skip this job">Skip</button>
                 </form>
+              {% elif job.status == 'easy_apply' or job.apply_method == 'linkedin_easy_apply' %}
+                <a href="{{ job.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-small btn-primary" style="background:#0a66c2; border:none; text-decoration:none;" title="Open on LinkedIn for 1-click Easy Apply">
+                  ⚡ Open & Apply
+                </a>
+                <form method="POST" action="{{ url_for('apply_single', job_id=job.id) }}" style="display:inline">
+                  <button type="submit" class="btn btn-small btn-secondary" title="Mark as applied manually">Done</button>
+                </form>
+                {% if job.screenshot_file %}
+                  <button type="button" class="btn btn-small btn-light" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
+                    📸 Proof
+                  </button>
+                {% endif %}
               {% elif job.status == 'failed' %}
                 <button type="button" class="btn btn-small btn-primary" style="background:#ea580c; border:none;" onclick='openTeachModal({{ job.id }}, {{ job.title|tojson }}, {{ job.company|tojson }}, {{ job.unanswered_fields_json|tojson }})'>
                   💡 Teach & Retry
                 </button>
+
                 {% if job.screenshot_file %}
                   <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
                     📸 Proof

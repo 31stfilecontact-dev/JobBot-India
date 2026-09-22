@@ -165,94 +165,14 @@ def apply_linkedin(
                         from autofill.browser_engine import run_playwright_apply
                         return run_playwright_apply(redirect_url, profile, resume_path, ats_type=ats, dry_run=dry_run, job_context=job_context)
 
-            # Case 2: In-app "Easy Apply"
-            easy_apply_btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply')")
+            # Case 2: In-app "Easy Apply" -> Capture and add to user's manual Easy Apply list
+            easy_apply_btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply'), div[data-job-id] button:has-text('Easy Apply')")
             if easy_apply_btn.count() > 0:
-                easy_apply_btn.first.click()
-                time.sleep(2)
-
-                # Process Easy Apply modal steps (up to 5 steps)
-                for step in range(5):
-                    modal = page.locator(".jobs-easy-apply-modal, div[role='dialog']")
-                    if modal.count() == 0:
-                        break
-
-                    # 1. Fill Text Inputs
-                    inputs = modal.locator("input:not([type='hidden']):not([type='file']):not([type='checkbox']):not([type='radio']), textarea")
-                    for i in range(inputs.count()):
-                        inp = inputs.nth(i)
-                        if not inp.is_visible():
-                            continue
-                        label_cands = [inp.get_attribute("aria-label") or "", inp.get_attribute("name") or "", inp.get_attribute("id") or ""]
-                        lbl_text = " ".join(filter(None, label_cands))
-                        val = resolve_field_value(lbl_text, "text", profile, job_context)
-                        if val:
-                            try:
-                                inp.fill(val)
-                            except Exception:
-                                pass
-                        else:
-                            clean_lbl = " ".join(lbl_text.split())
-                            if clean_lbl and clean_lbl not in unanswered_fields:
-                                unanswered_fields.append(clean_lbl)
-
-                    # 2. Fill Dropdowns
-                    selects = modal.locator("select")
-                    for i in range(selects.count()):
-                        sel = selects.nth(i)
-                        if not sel.is_visible():
-                            continue
-                        lbl_text = sel.get_attribute("name") or sel.get_attribute("id") or ""
-                        options = sel.locator("option").all_inner_texts()
-                        best_opt = resolve_dropdown_option(options, lbl_text, profile, job_context)
-                        if best_opt:
-                            try:
-                                sel.select_option(label=best_opt)
-                            except Exception:
-                                pass
-                        else:
-                            clean_lbl = " ".join(lbl_text.split())
-                            if clean_lbl and clean_lbl not in unanswered_fields:
-                                unanswered_fields.append(clean_lbl)
-
-                    # 3. Handle File / Resume Upload
-                    if resume_path and os.path.exists(resume_path):
-                        file_inps = modal.locator("input[type='file']")
-                        if file_inps.count() > 0:
-                            try:
-                                file_inps.first.set_input_files(resume_path)
-                                time.sleep(1)
-                            except Exception:
-                                pass
-
-                    # Check for Next vs Review vs Submit button
-                    next_btn = modal.locator("button:has-text('Next'), button:has-text('Review')")
-                    submit_btn = modal.locator("button:has-text('Submit application')")
-
-                    if dry_run and (submit_btn.count() > 0 or next_btn.count() > 0):
-                        # Capture preview proof screenshot
-                        screenshot_file = capture_screenshot(page, prefix="linkedin_easy_apply_dry_run")
-                        browser.close()
-                        note = "LinkedIn Easy Apply dry-run: Form filled and preview screenshot captured."
-                        return True, note, screenshot_file, unanswered_fields
-
-                    if next_btn.count() > 0:
-                        next_btn.first.click()
-                        time.sleep(2)
-                    elif submit_btn.count() > 0:
-                        if not dry_run:
-                            submit_btn.first.click()
-                            time.sleep(3)
-                            screenshot_file = capture_screenshot(page, prefix="linkedin_applied")
-                            browser.close()
-                            return True, "LinkedIn Easy Apply application successfully submitted.", screenshot_file, unanswered_fields
-                        break
-                    else:
-                        break
-
-                screenshot_file = capture_screenshot(page, prefix="linkedin_dry_run" if dry_run else "linkedin_submission")
+                screenshot_file = capture_screenshot(page, prefix="linkedin_easy_apply")
                 browser.close()
-                return True, "LinkedIn Easy Apply processed.", screenshot_file, unanswered_fields
+                note = "LinkedIn Easy Apply available — Flagged for 1-click manual submission."
+                return True, note, screenshot_file, []
+
 
             # Case 3: No direct apply button on page — take screenshot
             screenshot_file = capture_screenshot(page, prefix="linkedin_no_apply_btn")
