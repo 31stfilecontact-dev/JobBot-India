@@ -1,12 +1,15 @@
 import os
 import json
 import logging
+import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from werkzeug.utils import secure_filename
 
 from models import db, Job, Profile, TrackedCompany, AuditLog
@@ -43,8 +46,24 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "jobbot.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "connect_args": {"timeout": 30, "check_same_thread": False}
+}
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
 app.logger.setLevel(logging.INFO)
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable SQLite WAL mode and busy timeout to avoid 'database is locked' errors."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
+
+
 db.init_app(app)
 
 
@@ -119,9 +138,21 @@ def _parse_csv(value):
 
 
 def run_search(keywords, cities, sources=None, pages: int = 1):
-    """Run all selected scrapers with deduplication and persist newly discovered jobs."""
+    """Run all selected scrapers with in-memory deduplication and bulk persistence."""
     sources = sources or ["naukri", "linkedin", "indeed", "google_jobs"]
     results_summary = {"jobs_found": 0, "jobs_added": 0}
+
+    # Pre-fetch existing URLs and (title, company) keys into memory to prevent premature query autoflushes & lock contention
+    existing_urls = {u[0] for u in db.session.query(Job.job_url).all() if u[0]}
+    existing_titles = {
+        (t[0].strip().lower(), t[1].strip().lower()) 
+        for t in db.session.query(Job.title, Job.company).all() 
+        if t[0] and t[1]
+    }
+
+    seen_urls_in_batch = set(existing_urls)
+    seen_titles_in_batch = set(existing_titles)
+    new_job_objects = []
 
     for keyword in keywords:
         for city in cities:
@@ -150,18 +181,19 @@ def run_search(keywords, cities, sources=None, pages: int = 1):
                 if not job_url:
                     continue
 
-                # Deduplicate by URL or exact Title + Company
-                exists = Job.query.filter(
-                    (Job.job_url == job_url) | 
-                    ((Job.title == result.get("title")) & (Job.company == result.get("company")))
-                ).first()
+                title = (result.get("title") or "Unknown").strip()
+                company = (result.get("company") or "Unknown").strip()
+                title_key = (title.lower(), company.lower())
 
-                if exists:
+                if job_url in seen_urls_in_batch or title_key in seen_titles_in_batch:
                     continue
 
+                seen_urls_in_batch.add(job_url)
+                seen_titles_in_batch.add(title_key)
+
                 job = Job(
-                    title=result.get("title", "Unknown"),
-                    company=result.get("company", "Unknown"),
+                    title=title,
+                    company=company,
                     location=result.get("location", city),
                     source=result.get("source", "web"),
                     job_url=job_url,
@@ -171,10 +203,13 @@ def run_search(keywords, cities, sources=None, pages: int = 1):
                     description=result.get("description", ""),
                     status="new",
                 )
-                db.session.add(job)
+                new_job_objects.append(job)
                 results_summary["jobs_added"] += 1
 
-    db.session.commit()
+    if new_job_objects:
+        db.session.add_all(new_job_objects)
+        db.session.commit()
+
     return results_summary
 
 
@@ -464,6 +499,9 @@ def portals_delete(company_id):
 def portals_search():
     companies = TrackedCompany.query.all()
     added = 0
+    existing_urls = {u[0] for u in db.session.query(Job.job_url).all() if u[0]}
+    new_jobs = []
+
     for company in companies:
         if company.ats_type == "greenhouse" and company.board_token:
             results = fetch_greenhouse_jobs(company.board_token)
@@ -477,19 +515,19 @@ def portals_search():
             continue
 
         for result in results:
-            if not result.get("job_url"):
+            url = result.get("job_url")
+            if not url or url in existing_urls:
                 continue
-            if Job.query.filter_by(job_url=result["job_url"]).first():
-                continue
+            existing_urls.add(url)
             exp_min, exp_max = parse_experience_range(result.get("raw_content", ""))
-            db.session.add(
+            new_jobs.append(
                 Job(
                     title=result.get("title", "Unknown"),
                     company=company.display_name,
                     location=result.get("location", ""),
                     source="company_portal",
-                    job_url=result["job_url"],
-                    career_page_url=result["job_url"],
+                    job_url=url,
+                    career_page_url=url,
                     ats_type=result.get("ats_type", "unknown"),
                     exp_min_years=exp_min,
                     exp_max_years=exp_max,
@@ -497,7 +535,11 @@ def portals_search():
                 )
             )
             added += 1
-    db.session.commit()
+
+    if new_jobs:
+        db.session.add_all(new_jobs)
+        db.session.commit()
+
     flash(f"Company portal search complete — {added} new jobs added.")
     return redirect(url_for("index"))
 
