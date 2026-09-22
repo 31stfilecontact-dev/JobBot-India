@@ -11,7 +11,7 @@ from autofill.browser_engine import run_playwright_apply
 def apply_lever(job_url: str, profile: dict, resume_path: str, dry_run: bool = False, job_context: dict = None):
     """
     Apply to a Lever job posting.
-    Returns: (success: bool, note: str, screenshot_file: str)
+    Returns: (success: bool, note: str, screenshot_file: str, unanswered_fields: list)
     """
     job_context = job_context or {}
     apply_url = job_url if job_url.rstrip("/").endswith("/apply") else job_url.rstrip("/") + "/apply"
@@ -46,7 +46,7 @@ def apply_lever(job_url: str, profile: dict, resume_path: str, dry_run: bool = F
                     if files:
                         files["resume"].close()
                     if submit_resp.status_code in (200, 302):
-                        return True, "Application submitted directly via Lever.", ""
+                        return True, "Application submitted directly via Lever.", "", []
                 except Exception:
                     if files and "resume" in files and not files["resume"].closed:
                         files["resume"].close()

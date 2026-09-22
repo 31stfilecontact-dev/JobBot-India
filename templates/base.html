@@ -28,15 +28,19 @@
         Dashboard
       </a>
       <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint == 'report' %}active{% endif %}">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg>
         Outcomes
+      </a>
+      <a href="{{ url_for('memory_page') }}" class="nav-link {% if request.endpoint == 'memory_page' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Z"/><path d="M12 6v6l4 2"/></svg>
+        Memory Bank
       </a>
       <a href="{{ url_for('audit') }}" class="nav-link {% if request.endpoint == 'audit' %}active{% endif %}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         Audit Trail
       </a>
       <a href="{{ url_for('portals') }}" class="nav-link {% if request.endpoint == 'portals' %}active{% endif %}">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/></svg>
         Company Portals
       </a>
       <a href="{{ url_for('profile_page') }}" class="nav-link {% if request.endpoint == 'profile_page' %}active{% endif %}">
@@ -74,6 +78,35 @@
     </div>
   </div>
 
+  <!-- In-app Resolve & Teach Memory Modal -->
+  <div id="teachModal" class="modal-backdrop" onclick="closeTeachModal(event)">
+    <div class="modal-content" style="max-width: 600px; width: 100%;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <strong id="teachModalTitle">💡 Teach Bot & Retry Application</strong>
+        <button class="modal-close" onclick="closeTeachModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align: left;">
+        <p class="subtitle" style="margin-top:0;">Provide answers to the questions below. They will be saved to your Memory Bank and used to automatically auto-apply to this and future jobs.</p>
+        <form id="teachForm" method="POST" action="">
+          <div id="teachFieldsContainer" style="display:flex; flex-direction:column; gap:12px;"></div>
+          
+          <div style="margin-top:14px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+            <label style="margin-bottom:4px; font-weight:600;">Memory Rule Scope:</label>
+            <div style="display:flex; gap:16px;">
+              <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="global" checked> Global (All Employers)</label>
+              <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="company"> This Company Only</label>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn btn-light" onclick="closeTeachModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">💾 Save to Memory & Auto-Retry</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <footer>
     JobBot India &copy; 2026 — Built for automated job discovery and application workflow.
   </footer>
@@ -88,8 +121,48 @@
       document.getElementById('screenshotModal').style.display = 'none';
       document.getElementById('modalImg').src = '';
     }
+
+    function openTeachModal(jobId, jobTitle, company, fieldsJson) {
+      var container = document.getElementById('teachFieldsContainer');
+      container.innerHTML = '';
+      var fields = [];
+      try {
+        fields = typeof fieldsJson === 'string' ? JSON.parse(fieldsJson) : fieldsJson;
+      } catch(e) {
+        fields = [];
+      }
+      if (!fields || fields.length === 0) {
+        fields = ["Custom Screening Question / Requirement"];
+      }
+
+      fields.forEach(function(field) {
+        var row = document.createElement('div');
+        row.style.background = '#f8fafc';
+        row.style.padding = '10px';
+        row.style.border = '1px solid #e2e8f0';
+        row.style.borderRadius = '6px';
+        row.innerHTML = `
+          <label style="font-size:0.85rem; color:#1e293b;">${field}</label>
+          <input type="hidden" name="question" value="${field}">
+          <input type="text" name="answer" placeholder="Enter your answer (e.g. Yes / 30 days / 15 LPA)" required style="margin-top:4px;">
+        `;
+        container.appendChild(row);
+      });
+
+      document.getElementById('teachModalTitle').innerText = '💡 Teach Bot: ' + jobTitle + ' (' + company + ')';
+      document.getElementById('teachForm').action = '/job/' + jobId + '/resolve';
+      document.getElementById('teachModal').style.display = 'flex';
+    }
+
+    function closeTeachModal() {
+      document.getElementById('teachModal').style.display = 'none';
+    }
+
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') closeScreenshotModal();
+      if (e.key === 'Escape') {
+        closeScreenshotModal();
+        closeTeachModal();
+      }
     });
   </script>
 </body>

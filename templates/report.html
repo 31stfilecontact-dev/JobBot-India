@@ -40,17 +40,24 @@
             <span class="note" title="{{ job.notes }}">{{ job.notes }}</span>
           </td>
           <td style="text-align: right;">
-            {% if job.screenshot_file %}
-              <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
-                📸 View Proof
-              </button>
-            {% elif job.status == 'failed' %}
-              <form method="POST" action="{{ url_for('apply_single', job_id=job.id) }}" style="display:inline">
-                <button type="submit" class="btn btn-small btn-secondary">Retry</button>
-              </form>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
+            <div class="action-buttons" style="justify-content: flex-end; display: flex; gap: 6px;">
+              {% if job.status == 'failed' %}
+                <button type="button" class="btn btn-small btn-primary" style="background:#ea580c; border:none;" onclick='openTeachModal({{ job.id }}, {{ job.title|tojson }}, {{ job.company|tojson }}, {{ job.unanswered_fields_json|tojson }})'>
+                  💡 Teach & Retry
+                </button>
+                {% if job.screenshot_file %}
+                  <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
+                    📸 Proof
+                  </button>
+                {% endif %}
+              {% elif job.screenshot_file %}
+                <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
+                  📸 View Proof
+                </button>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% else %}

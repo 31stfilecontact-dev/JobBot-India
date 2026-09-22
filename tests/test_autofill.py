@@ -51,7 +51,7 @@ def test_resolve_dropdown_option():
 
 def test_email_dry_run():
     profile = {"full_name": "Arjun Sharma", "email": "arjun@example.com"}
-    ok, note, _ = send_application_email(
+    ok, note, _, _ = send_application_email(
         to_email="careers@company.com",
         job_title="Backend Developer",
         company="StartupCo",
@@ -61,3 +61,46 @@ def test_email_dry_run():
     )
     assert ok is True
     assert "Dry-run simulation" in note
+
+
+def test_memory_bank_resolution():
+    from autofill.ai_form_filler import query_memory_bank, learn_memory
+    from models import ApplicationMemory
+    from app import app, db
+
+    with app.app_context():
+        db.create_all()
+        # Clean up any existing memories in test
+        ApplicationMemory.query.delete()
+        db.session.commit()
+
+        # Learn a memory
+        saved = learn_memory(
+            question="What is your primary tech stack experience?",
+            answer="Python, Django, FastAPI, PostgreSQL",
+            company="Razorpay",
+            ats_type="greenhouse"
+        )
+        assert saved is True
+
+        # Query company-specific exact/fuzzy match
+        ans = query_memory_bank(
+            field_label="What is your primary tech stack experience?",
+            company="Razorpay",
+            ats_type="greenhouse"
+        )
+        assert ans == "Python, Django, FastAPI, PostgreSQL"
+
+        # Query global fallback
+        learn_memory(
+            question="Are you willing to work in rotational shifts?",
+            answer="Yes, open to rotational shifts",
+            company=None
+        )
+        ans_global = query_memory_bank(
+            field_label="Are you comfortable working in rotational shifts?",
+            company="SomeOtherCompany"
+        )
+        assert ans_global == "Yes, open to rotational shifts"
+
+

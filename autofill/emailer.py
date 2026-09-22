@@ -10,10 +10,10 @@ from email.message import EmailMessage
 def send_application_email(to_email: str, job_title: str, company: str, profile: dict, resume_path: str, dry_run: bool = False):
     """
     Sends application email to target HR/recruiter.
-    Returns: (success: bool, note: str, screenshot_file: str)
+    Returns: (success: bool, note: str, screenshot_file: str, unanswered_fields: list)
     """
     if dry_run:
-        return True, f"Dry-run simulation: would send email to {to_email} with attached resume.", ""
+        return True, f"Dry-run simulation: would send email to {to_email} with attached resume.", "", []
 
     smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", 587))
@@ -21,7 +21,7 @@ def send_application_email(to_email: str, job_title: str, company: str, profile:
     smtp_pass = os.environ.get("SMTP_PASS")
 
     if not smtp_user or not smtp_pass:
-        return False, "SMTP credentials (SMTP_USER / SMTP_PASS) not configured.", ""
+        return False, "SMTP credentials (SMTP_USER / SMTP_PASS) not configured.", "", []
 
     msg = EmailMessage()
     msg["Subject"] = f"Application for {job_title} — {profile.get('full_name', '')}"
@@ -59,6 +59,6 @@ def send_application_email(to_email: str, job_title: str, company: str, profile:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
-        return True, f"Application email successfully sent to {to_email}", ""
+        return True, f"Application email successfully sent to {to_email}", "", []
     except Exception as e:
-        return False, f"Email delivery failed: {e}", ""
+        return False, f"Email delivery failed: {e}", "", []

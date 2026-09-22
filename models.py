@@ -31,7 +31,19 @@ class Job(db.Model):
     notes = db.Column(db.Text)
     screenshot_file = db.Column(db.String(300))
 
+    # Stores detected unanswered form questions/fields for 1-click Teach & Retry
+    unanswered_fields_json = db.Column(db.Text, default="[]")
+
     discovered_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_unanswered_fields(self) -> list:
+        try:
+            return json.loads(self.unanswered_fields_json or "[]")
+        except Exception:
+            return []
+
+    def set_unanswered_fields(self, fields: list):
+        self.unanswered_fields_json = json.dumps(fields or [])
 
     def to_dict(self):
         return {
@@ -49,6 +61,7 @@ class Job(db.Model):
             "applied_at": self.applied_at.strftime("%Y-%m-%d %H:%M") if self.applied_at else None,
             "notes": self.notes,
             "screenshot_file": self.screenshot_file,
+            "unanswered_fields": self.get_unanswered_fields(),
         }
 
 
@@ -73,12 +86,12 @@ class Profile(db.Model):
     cover_letter_template = db.Column(db.Text, default="")
     resume_filename = db.Column(db.String(300), default="")
 
-    # Custom Q&A key-value answers JSON (e.g. why join us, relocation preference, etc.)
+    # Custom Q&A key-value answers JSON
     custom_answers_json = db.Column(db.Text, default="{}")
 
     # Search preferences
-    keywords = db.Column(db.String(500), default="Software Engineer, Python Developer, Full Stack Developer")
-    preferred_cities = db.Column(db.String(500), default="Hyderabad,Bengaluru,Mumbai,Pune,Delhi NCR,Remote")
+    keywords = db.Column(db.String(500), default="Software Engineer, Python Developer, Backend Engineer")
+    preferred_cities = db.Column(db.String(500), default="Bengaluru, Hyderabad, Pune, Remote")
     min_experience = db.Column(db.Float, default=0)
     exp_filter_min = db.Column(db.Float, default=0)
     exp_filter_max = db.Column(db.Float, default=99)
@@ -143,4 +156,33 @@ class AuditLog(db.Model):
             "message": self.message,
             "screenshot_file": self.screenshot_file,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+
+
+class ApplicationMemory(db.Model):
+    """
+    Persistent Memory Bank storing learned answers from manual inputs and failed applications.
+    Used by the AI/heuristic form filler to automatically resolve dynamic questions on future jobs.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    question_pattern = db.Column(db.String(500), nullable=False) # e.g. "hybrid work model 3 days"
+    answer_value = db.Column(db.Text, nullable=False)            # e.g. "Yes, comfortable with hybrid model"
+    company = db.Column(db.String(200), nullable=True)           # specific employer (None = global)
+    ats_type = db.Column(db.String(50), nullable=True)           # specific ATS (None = any)
+    field_type = db.Column(db.String(50), default="text")        # text / select / textarea / radio
+    times_used = db.Column(db.Integer, default=0)
+    last_used_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "question_pattern": self.question_pattern,
+            "answer_value": self.answer_value,
+            "company": self.company,
+            "ats_type": self.ats_type,
+            "field_type": self.field_type,
+            "times_used": self.times_used,
+            "last_used_at": self.last_used_at.strftime("%Y-%m-%d %H:%M") if self.last_used_at else None,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M") if self.created_at else None,
         }

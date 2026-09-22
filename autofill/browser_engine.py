@@ -1,11 +1,10 @@
 """
-Playwright Browser Automation Engine.
-Provides headless browser automation for interacting with complex JavaScript-based ATS forms (Workday, SmartRecruiters, Ashby, Greenhouse, Lever).
+Playwright Browser Automation Engine with Failure Detection & Unanswered Question Extraction.
 Supports:
 - Realistic browser headers & stealth
 - Dry-run mode with timestamped screenshot generation
 - Intelligent DOM element identification and auto-filling
-- File upload handling for PDF resumes
+- Extraction of unanswered/custom screening questions when forms fail
 """
 import os
 import time
@@ -38,13 +37,14 @@ def run_playwright_apply(
     ats_type: str,
     dry_run: bool = True,
     job_context: dict = None,
-) -> tuple[bool, str, str]:
+) -> tuple[bool, str, str, list]:
     """
     Executes an automated application using Playwright.
-    Returns: (success: bool, notes: str, screenshot_filename: str)
+    Returns: (success: bool, notes: str, screenshot_filename: str, unanswered_fields: list)
     """
     screenshot_file = ""
     job_context = job_context or {}
+    unanswered_fields = []
 
     with sync_playwright() as p:
         try:
@@ -87,7 +87,6 @@ def run_playwright_apply(
                 if not inp.is_visible():
                     continue
 
-                # Derive label from aria-label, name, id, placeholder, or parent text
                 label_candidates = [
                     inp.get_attribute("aria-label") or "",
                     inp.get_attribute("placeholder") or "",
@@ -96,7 +95,6 @@ def run_playwright_apply(
                 ]
                 label_str = " ".join(filter(None, label_candidates))
 
-                # If still empty, inspect label element
                 inp_id = inp.get_attribute("id")
                 if inp_id:
                     lbl = page.locator(f"label[for='{inp_id}']")
@@ -109,6 +107,11 @@ def run_playwright_apply(
                         inp.fill(value_to_fill)
                     except Exception:
                         pass
+                else:
+                    # Clean and record as unanswered for user review/learning
+                    clean_label = " ".join(label_str.split())
+                    if clean_label and len(clean_label) > 2 and clean_label not in unanswered_fields:
+                        unanswered_fields.append(clean_label)
 
             # Fill Dropdowns / Selects
             selects = page.locator("select")
@@ -118,19 +121,26 @@ def run_playwright_apply(
                     continue
                 label_str = sel.get_attribute("name") or sel.get_attribute("id") or ""
                 options = sel.locator("option").all_inner_texts()
-                best_opt = resolve_dropdown_option(options, label_str, profile)
+                best_opt = resolve_dropdown_option(options, label_str, profile, job_context)
                 if best_opt:
                     try:
                         sel.select_option(label=best_opt)
                     except Exception:
                         pass
+                else:
+                    clean_label = " ".join(label_str.split())
+                    if clean_label and clean_label not in unanswered_fields:
+                        unanswered_fields.append(clean_label)
 
             # Take dry-run or pre-submission screenshot
             screenshot_file = capture_screenshot(page, prefix=f"{ats_type}_dry_run" if dry_run else f"{ats_type}_submission")
 
             if dry_run:
                 browser.close()
-                return True, "Dry-run successful: form filled and preview screenshot captured.", screenshot_file
+                note = "Dry-run successful: form filled and preview screenshot captured."
+                if unanswered_fields:
+                    note += f" (Note: {len(unanswered_fields)} custom questions may need your input)."
+                return True, note, screenshot_file, unanswered_fields
 
             # Non-dry-run: Click Submit button
             submit_btn = page.locator("button[type='submit'], input[type='submit'], button:has-text('Submit Application'), button:has-text('Submit')")
@@ -139,18 +149,18 @@ def run_playwright_apply(
                 time.sleep(4)
                 screenshot_file = capture_screenshot(page, prefix=f"{ats_type}_post_submit")
                 browser.close()
-                return True, "Application successfully submitted.", screenshot_file
+                return True, "Application successfully submitted.", screenshot_file, unanswered_fields
             else:
                 browser.close()
-                return False, "Could not locate final Submit button.", screenshot_file
+                return False, "Could not locate final Submit button.", screenshot_file, unanswered_fields
 
         except PlaywrightTimeoutError:
             if 'page' in locals():
                 screenshot_file = capture_screenshot(page, prefix=f"{ats_type}_timeout")
             browser.close()
-            return False, "Page load or element interaction timed out.", screenshot_file
+            return False, "Page load or element interaction timed out.", screenshot_file, unanswered_fields
         except Exception as e:
             if 'page' in locals():
                 screenshot_file = capture_screenshot(page, prefix=f"{ats_type}_error")
             browser.close()
-            return False, f"Browser automation error: {str(e)}", screenshot_file
+            return False, f"Browser automation error: {str(e)}", screenshot_file, unanswered_fields

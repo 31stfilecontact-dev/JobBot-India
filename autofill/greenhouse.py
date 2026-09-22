@@ -2,6 +2,7 @@
 Auto-apply to jobs hosted on Greenhouse (boards.greenhouse.io).
 Supports direct HTTP multipart form submission with automatic Playwright browser fallback for JS-heavy boards.
 """
+import os
 import requests
 from bs4 import BeautifulSoup
 from autofill.browser_engine import run_playwright_apply
@@ -10,7 +11,7 @@ from autofill.browser_engine import run_playwright_apply
 def apply_greenhouse(job_url: str, profile: dict, resume_path: str, dry_run: bool = False, job_context: dict = None):
     """
     Apply to a Greenhouse job board.
-    Returns: (success: bool, note: str, screenshot_file: str)
+    Returns: (success: bool, note: str, screenshot_file: str, unanswered_fields: list)
     """
     job_context = job_context or {}
 
@@ -61,7 +62,7 @@ def apply_greenhouse(job_url: str, profile: dict, resume_path: str, dry_run: boo
                     if files:
                         files["job_application[resume]"].close()
                     if submit_resp.status_code in (200, 302) and "error" not in submit_resp.text.lower()[:1500]:
-                        return True, "Application submitted directly via Greenhouse API.", ""
+                        return True, "Application submitted directly via Greenhouse API.", "", []
                 except Exception:
                     if files and "job_application[resume]" in files and not files["job_application[resume]"].closed:
                         files["job_application[resume]"].close()

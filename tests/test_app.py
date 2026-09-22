@@ -77,3 +77,68 @@ def test_profile_update(client):
         profile = Profile.query.first()
         assert profile.full_name == "Rajesh Kumar"
         assert profile.get_custom_answers().get("relocation") == "Willing to relocate to Bangalore"
+
+
+def test_memory_routes(client):
+    # View memory bank page
+    res = client.get("/memory")
+    assert res.status_code == 200
+    assert b"Memory Bank" in res.data
+
+    # Add memory entry
+    add_res = client.post("/memory/add", data={
+        "question": "What is your notice period?",
+        "answer": "30 days",
+        "scope": "company",
+        "company": "Swiggy",
+        "ats_type": "lever",
+    }, follow_redirects=True)
+    assert add_res.status_code == 200
+    assert b"What is your notice period?" in add_res.data
+    assert b"30 days" in add_res.data
+
+
+    # Delete memory entry
+    from models import ApplicationMemory
+    with app.app_context():
+        mem = ApplicationMemory.query.filter_by(question_pattern="What is your notice period?").first()
+        assert mem is not None
+        del_res = client.post(f"/memory/{mem.id}/delete", follow_redirects=True)
+        assert del_res.status_code == 200
+        assert ApplicationMemory.query.filter_by(question_pattern="What is your notice period?").first() is None
+
+
+def test_job_resolve_route(client, mocker):
+    mocker.patch("app._attempt_apply", return_value=True)
+    from models import Job
+    with app.app_context():
+        job = Job(
+            title="Frontend Engineer",
+            company="Zepto",
+            job_url="https://boards.greenhouse.io/zepto/jobs/123",
+            source="greenhouse",
+            ats_type="greenhouse",
+            status="failed",
+            notes="Missing required field: portfolio_url",
+            unanswered_fields_json='["Portfolio URL"]'
+        )
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.id
+
+    # Post resolutions
+    res = client.post(f"/job/{job_id}/resolve", data={
+        "question": "Portfolio URL",
+        "answer": "https://github.com/myuser",
+        "scope": "company"
+    }, follow_redirects=True)
+    assert res.status_code == 200
+
+    from models import ApplicationMemory
+    with app.app_context():
+        mem = ApplicationMemory.query.filter_by(question_pattern="Portfolio URL").first()
+        assert mem is not None
+        assert mem.answer_value == "https://github.com/myuser"
+        assert mem.company == "Zepto"
+
+

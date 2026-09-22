@@ -15,7 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from werkzeug.utils import secure_filename
 
-from models import db, Job, Profile, TrackedCompany, AuditLog
+from models import db, Job, Profile, TrackedCompany, AuditLog, ApplicationMemory
 from scrapers.naukri import search_naukri
 from scrapers.linkedin import search_linkedin
 from scrapers.indeed import search_indeed
@@ -33,6 +33,7 @@ from scrapers.company_portal import (
     parse_experience_range,
 )
 
+from autofill.ai_form_filler import learn_memory
 from autofill.greenhouse import apply_greenhouse
 from autofill.lever import apply_lever
 from autofill.workday import apply_workday
@@ -81,6 +82,7 @@ def ensure_sqlite_schema():
             "description": "TEXT",
             "last_attempted_at": "DATETIME",
             "screenshot_file": "VARCHAR(300)",
+            "unanswered_fields_json": "TEXT DEFAULT '[]'",
         },
         "profile": {
             "current_city": "VARCHAR(100) DEFAULT ''",
@@ -117,12 +119,13 @@ with app.app_context():
     ensure_sqlite_schema()
     if not Profile.query.first():
         db.session.add(Profile(
-            full_name="Candidate Name",
-            email="candidate@example.com",
+            full_name="Aman Mehta",
+            email="amanmehta080799@gmail.com",
             phone="+91 9876543210",
             current_city="Bengaluru",
             keywords="Software Engineer, Python Developer, Backend Engineer",
             preferred_cities="Bengaluru, Hyderabad, Pune, Remote",
+            smtp_email="amanmehta080799@gmail.com",
         ))
         db.session.commit()
 
@@ -145,7 +148,6 @@ def run_search(keywords, cities, sources=None, pages: int = 1):
     sources = sources or ["naukri", "linkedin", "indeed", "google_jobs"]
     results_summary = {"jobs_found": 0, "jobs_added": 0}
 
-    # Pre-fetch existing URLs and (title, company) keys into memory to prevent premature query autoflushes & lock contention
     existing_urls = {u[0] for u in db.session.query(Job.job_url).all() if u[0]}
     existing_titles = {
         (t[0].strip().lower(), t[1].strip().lower()) 
@@ -219,7 +221,7 @@ def run_search(keywords, cities, sources=None, pages: int = 1):
 def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
     """
     Identifies the ATS / career page and applies using browser automation, direct API, or email.
-    Records audit log and updates Job record.
+    Records audit log, captures unanswered fields, and updates Job record.
     """
     profile = get_profile()
     profile_dict = profile.to_dict()
@@ -234,42 +236,45 @@ def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
     ok = False
     note = "No automated apply method available."
     screenshot_file = ""
+    unanswered_fields = []
     apply_method = f"ats_{job.ats_type}" if job.ats_type != "unknown" else "manual"
 
-    job_ctx = {"title": job.title, "company": job.company, "job_url": job.job_url}
+    job_ctx = {"title": job.title, "company": job.company, "job_url": job.job_url, "ats_type": job.ats_type}
 
     if job.ats_type == "greenhouse":
-        ok, note, screenshot_file = apply_greenhouse(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
+        ok, note, screenshot_file, unanswered_fields = apply_greenhouse(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_greenhouse"
     elif job.ats_type == "lever":
-        ok, note, screenshot_file = apply_lever(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
+        ok, note, screenshot_file, unanswered_fields = apply_lever(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_lever"
     elif job.ats_type == "workday":
-        ok, note, screenshot_file = apply_workday(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
+        ok, note, screenshot_file, unanswered_fields = apply_workday(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_workday"
     elif job.ats_type == "smartrecruiters":
-        ok, note, screenshot_file = apply_smartrecruiters(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
+        ok, note, screenshot_file, unanswered_fields = apply_smartrecruiters(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_smartrecruiters"
     elif job.ats_type == "ashby":
-        ok, note, screenshot_file = apply_ashby(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
+        ok, note, screenshot_file, unanswered_fields = apply_ashby(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_ashby"
     else:
         # Email fallback
         hr_email = job.hr_email or extract_email(job.career_page_url)
         if hr_email:
             job.hr_email = hr_email
-            ok, note, screenshot_file = send_application_email(hr_email, job.title, job.company, profile_dict, resume_path, dry_run=dry_run)
+            ok, note, screenshot_file, unanswered_fields = send_application_email(hr_email, job.title, job.company, profile_dict, resume_path, dry_run=dry_run)
             apply_method = "email"
         else:
             note = "No ATS form detected and no HR email found on career page."
             apply_method = "manual_required"
 
-    # Update job status
+    # Update job record
     job.apply_method = apply_method
     job.last_attempted_at = datetime.utcnow()
     job.notes = note
     if screenshot_file:
         job.screenshot_file = screenshot_file
+    if unanswered_fields:
+        job.set_unanswered_fields(unanswered_fields)
 
     if dry_run:
         job.status = "dry_run" if ok else "failed"
@@ -410,7 +415,7 @@ def apply_single(job_id):
     job = Job.query.get_or_404(job_id)
     _attempt_apply(job, dry_run=False)
     db.session.commit()
-    flash(f"Apply completed for '{job.title}' at {job.company}: {job.notes}")
+    flash(f"Apply finished for '{job.title}' at {job.company}: {job.notes}")
     return redirect(url_for("index"))
 
 
@@ -442,6 +447,97 @@ def auto_apply():
         flash(f"Auto-apply run finished — {results['applied']} applied, {results['failed']} failed.")
     return redirect(url_for("index"))
 
+
+# ---------- Resolve & Teach Memory ----------
+
+@app.route("/job/<int:job_id>/resolve", methods=["POST"])
+def resolve_and_teach(job_id):
+    """
+    Saves manually resolved screening answers directly into ApplicationMemory
+    and immediately re-triggers an auto-apply/dry-run on the job.
+    """
+    job = Job.query.get_or_404(job_id)
+    questions = request.form.getlist("question")
+    answers = request.form.getlist("answer")
+    scope = request.form.get("scope", "global") # global or company
+
+    target_company = job.company if scope == "company" else None
+    learned_count = 0
+
+    for q, a in zip(questions, answers):
+        if q.strip() and a.strip():
+            learn_memory(q.strip(), a.strip(), company=target_company, ats_type=job.ats_type)
+            learned_count += 1
+
+    # Clear unanswered fields since they are now resolved
+    job.set_unanswered_fields([])
+    db.session.commit()
+
+    # Automatically re-attempt application with new memory
+    ok = _attempt_apply(job, dry_run=False)
+    db.session.commit()
+
+    if ok:
+        flash(f"Learned {learned_count} answers & successfully applied to {job.company}!")
+    else:
+        flash(f"Learned {learned_count} answers into Memory Bank. Current attempt note: {job.notes}")
+
+    return redirect(request.referrer or url_for("index"))
+
+
+# ---------- Memory Bank Management ----------
+
+@app.route("/memory", methods=["GET"])
+def memory_page():
+    q = request.args.get("q", "").strip()
+    company_filter = request.args.get("company", "").strip()
+
+    query = ApplicationMemory.query
+    if q:
+        query = query.filter(
+            ApplicationMemory.question_pattern.ilike(f"%{q}%") | 
+            ApplicationMemory.answer_value.ilike(f"%{q}%")
+        )
+    if company_filter == "global":
+        query = query.filter(ApplicationMemory.company.is_(None))
+    elif company_filter == "company":
+        query = query.filter(ApplicationMemory.company.isnot(None))
+
+    memories = query.order_by(ApplicationMemory.times_used.desc(), ApplicationMemory.created_at.desc()).all()
+    stats = {
+        "total": ApplicationMemory.query.count(),
+        "global": ApplicationMemory.query.filter(ApplicationMemory.company.is_(None)).count(),
+        "company": ApplicationMemory.query.filter(ApplicationMemory.company.isnot(None)).count(),
+    }
+    return render_template("memory.html", memories=memories, stats=stats, q=q, company_filter=company_filter)
+
+
+@app.route("/memory/add", methods=["POST"])
+def memory_add():
+    question = request.form.get("question", "").strip()
+    answer = request.form.get("answer", "").strip()
+    scope = request.form.get("scope", "global")
+    company = request.form.get("company", "").strip() if scope == "company" else None
+    ats_type = request.form.get("ats_type", "").strip() or None
+
+    if question and answer:
+        learn_memory(question, answer, company=company, ats_type=ats_type)
+        flash("New Q&A pair successfully stored in Memory Bank.")
+    else:
+        flash("Question and Answer are required.")
+    return redirect(url_for("memory_page"))
+
+
+@app.route("/memory/<int:mem_id>/delete", methods=["POST"])
+def memory_delete(mem_id):
+    mem = ApplicationMemory.query.get_or_404(mem_id)
+    db.session.delete(mem)
+    db.session.commit()
+    flash("Memory entry removed.")
+    return redirect(url_for("memory_page"))
+
+
+# ---------- Reports & Portals ----------
 
 @app.route("/report")
 def report():
