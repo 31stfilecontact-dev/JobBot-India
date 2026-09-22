@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      System Application Audit Trail
+    </div>
+    <span class="text-muted" style="font-size:0.85rem;">Last 100 execution logs & diagnostics</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="job-table">
+      <thead>
+        <tr>
+          <th>Time (UTC)</th>
+          <th>Role / Position</th>
+          <th>Company</th>
+          <th>Method</th>
+          <th>Mode</th>
+          <th>Status</th>
+          <th>Diagnostics / Log</th>
+          <th style="text-align: right;">Screenshot Proof</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td style="white-space: nowrap; font-size: 0.82rem; color: #64748b;">
+            {{ log.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+          </td>
+          <td><strong>{{ log.job_title }}</strong></td>
+          <td>{{ log.company }}</td>
+          <td><span class="badge badge-ats">{{ log.apply_method }}</span></td>
+          <td>
+            {% if log.is_dry_run %}
+              <span class="badge badge-dry_run">Dry-Run</span>
+            {% else %}
+              <span class="badge badge-applied">Live</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge badge-status badge-{{ log.status }}">{{ log.status }}</span>
+          </td>
+          <td><span class="audit-message">{{ log.message }}</span></td>
+          <td style="text-align: right;">
+            {% if log.screenshot_file %}
+              <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=log.screenshot_file) }}', '{{ log.job_title }} at {{ log.company }}')">
+                📸 Proof
+              </button>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align: center; padding: 40px; color: #64748b;">
+            No application actions logged yet. Run a search and apply from the dashboard to see live execution logs.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

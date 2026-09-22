@@ -1,25 +1,67 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h2>Applied Report</h2>
-  <table class="job-table">
-    <thead>
-      <tr><th>Title</th><th>Company</th><th>Method</th><th>Status</th><th>When</th><th>Notes</th></tr>
-    </thead>
-    <tbody>
-      {% for job in jobs %}
-      <tr>
-        <td><a href="{{ job.job_url }}" target="_blank">{{ job.title }}</a></td>
-        <td>{{ job.company }}</td>
-        <td>{{ job.apply_method or '-' }}</td>
-        <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
-        <td>{{ job.applied_at.strftime('%d %b %Y, %H:%M') if job.applied_at else '-' }}</td>
-        <td class="note">{{ job.notes or '' }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">No applications yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="card-header">
+    <div class="card-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg>
+      Application Outcomes & History
+    </div>
+    <span class="text-muted" style="font-size:0.85rem;">Showing {{ jobs|length }} applied, dry-run & failed attempts</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="job-table">
+      <thead>
+        <tr>
+          <th>Position / Role</th>
+          <th>Company</th>
+          <th>Method</th>
+          <th>Status</th>
+          <th>Timestamp</th>
+          <th>Diagnostics / Outcome</th>
+          <th style="text-align: right;">Action / Proof</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>
+            <a href="{{ job.job_url }}" target="_blank" rel="noopener noreferrer" class="job-title-link">
+              {{ job.title }}
+            </a>
+          </td>
+          <td><strong>{{ job.company }}</strong></td>
+          <td><span class="badge badge-ats">{{ job.apply_method or 'Unknown' }}</span></td>
+          <td><span class="badge badge-status badge-{{ job.status }}">{{ job.status }}</span></td>
+          <td style="white-space: nowrap; font-size: 0.85rem; color: #64748b;">
+            {{ job.last_attempted_at.strftime("%Y-%m-%d %H:%M") if job.last_attempted_at else '—' }}
+          </td>
+          <td>
+            <span class="note" title="{{ job.notes }}">{{ job.notes }}</span>
+          </td>
+          <td style="text-align: right;">
+            {% if job.screenshot_file %}
+              <button type="button" class="btn btn-small btn-secondary" onclick="viewScreenshot('{{ url_for('get_screenshot', filename=job.screenshot_file) }}', '{{ job.title }} at {{ job.company }}')">
+                📸 View Proof
+              </button>
+            {% elif job.status == 'failed' %}
+              <form method="POST" action="{{ url_for('apply_single', job_id=job.id) }}" style="display:inline">
+                <button type="submit" class="btn btn-small btn-secondary">Retry</button>
+              </form>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">
+            No applied, simulated or failed job attempts recorded yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

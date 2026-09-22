@@ -68,3 +68,6 @@ dist/
 jobbot.db
 uploads/*
 !uploads/.gitkeep
+artifacts/screenshots/*
+!artifacts/screenshots/.gitkeep
+

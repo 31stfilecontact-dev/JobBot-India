@@ -3,26 +3,94 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JobBot India</title>
+  <title>JobBot India — Automated Job Discovery & Auto-Apply Suite</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
+  </style>
 </head>
 <body>
   <nav class="navbar">
-    <div class="brand">JobBot 🇮🇳</div>
+    <a href="{{ url_for('index') }}" class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>
+      <span>JobBot India</span>
+      <span class="brand-badge">Auto-Apply</span>
+    </a>
     <div class="nav-links">
-      <a href="{{ url_for('index') }}">Dashboard</a>
-      <a href="{{ url_for('report') }}">Applied Report</a>
-      <a href="{{ url_for('profile_page') }}">Profile & Data</a>
-      <a href="{{ url_for('portals') }}">Company Portals</a>
+      <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a href="{{ url_for('report') }}" class="nav-link {% if request.endpoint == 'report' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Outcomes
+      </a>
+      <a href="{{ url_for('audit') }}" class="nav-link {% if request.endpoint == 'audit' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Audit Trail
+      </a>
+      <a href="{{ url_for('portals') }}" class="nav-link {% if request.endpoint == 'portals' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+        Company Portals
+      </a>
+      <a href="{{ url_for('profile_page') }}" class="nav-link {% if request.endpoint == 'profile_page' %}active{% endif %}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile & Settings
+      </a>
     </div>
   </nav>
+
   <div class="container">
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <div class="flash">{{ messages[0] }}</div>
+        <div class="flash-container">
+          <div class="flash">
+            <span>{{ messages[0] }}</span>
+            <button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;font-size:1.1rem;cursor:pointer;">&times;</button>
+          </div>
+        </div>
       {% endif %}
     {% endwith %}
+
     {% block content %}{% endblock %}
   </div>
+
+  <!-- In-app Screenshot Viewer Modal -->
+  <div id="screenshotModal" class="modal-backdrop" onclick="closeScreenshotModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <strong id="modalTitle">Application Screenshot Proof</strong>
+        <button class="modal-close" onclick="closeScreenshotModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <img id="modalImg" src="" alt="Application Screenshot">
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    JobBot India &copy; 2026 — Built for automated job discovery and application workflow.
+  </footer>
+
+  <script>
+    function viewScreenshot(url, title) {
+      document.getElementById('modalImg').src = url;
+      document.getElementById('modalTitle').innerText = title || 'Application Screenshot Proof';
+      document.getElementById('screenshotModal').style.display = 'flex';
+    }
+    function closeScreenshotModal() {
+      document.getElementById('screenshotModal').style.display = 'none';
+      document.getElementById('modalImg').src = '';
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeScreenshotModal();
+    });
+  </script>
 </body>
 </html>

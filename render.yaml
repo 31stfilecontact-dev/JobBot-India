@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: jobbot-india
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: FLASK_SECRET
+        generateValue: true
+      - key: PORT
+        value: 5000
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false

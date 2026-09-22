@@ -1,61 +1,97 @@
 {% extends "base.html" %}
 {% block content %}
-
 <div class="card">
-  <h2>Company Portals</h2>
-  <p class="note">Add companies you specifically want to target. Jobs are pulled directly from their own careers page — not via Naukri/LinkedIn/Indeed.</p>
-
-  <form method="POST" action="{{ url_for('portals_add') }}" class="search-form">
-    <label>Company display name</label>
-    <input type="text" name="display_name" placeholder="e.g. Deloitte India" required>
-
-    <label>Portal type</label>
-    <select name="ats_type" onchange="document.getElementById('token-help').style.display = this.value === 'generic' ? 'none' : 'block'; document.getElementById('url-help').style.display = this.value === 'generic' ? 'block' : 'none';">
-      <option value="greenhouse">Greenhouse</option>
-      <option value="lever">Lever</option>
-      <option value="generic">Other / custom careers page</option>
-    </select>
-
-    <div id="token-help">
-      <label>Board token / slug (from the company's careers URL)</label>
-      <input type="text" name="board_token" placeholder="e.g. for boards.greenhouse.io/acme the token is 'acme'">
+  <div class="card-header">
+    <div class="card-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/></svg>
+      Track Direct Company Career Portals
     </div>
+    <span class="text-muted" style="font-size:0.85rem;">Index jobs directly from official company ATS feeds</span>
+  </div>
 
-    <div id="url-help" style="display:none">
-      <label>Careers page URL</label>
-      <input type="url" name="career_url" placeholder="https://company.com/careers">
+  <form method="POST" action="{{ url_for('portals_add') }}" class="portal-form">
+    <div class="form-row">
+      <div class="form-group flex-2">
+        <label>Company Name</label>
+        <input type="text" name="display_name" placeholder="e.g. Stripe, OpenAI, Swiggy, Razorpay" required>
+      </div>
+      <div class="form-group flex-1">
+        <label>ATS Platform</label>
+        <select name="ats_type" id="atsTypeSelect">
+          <option value="greenhouse">Greenhouse (Direct API)</option>
+          <option value="lever">Lever (Direct API)</option>
+          <option value="ashby">Ashby (Direct API)</option>
+          <option value="workday">Workday</option>
+          <option value="generic">Generic Careers Page</option>
+        </select>
+      </div>
+      <div class="form-group flex-2">
+        <label>Board Slug / Career URL</label>
+        <input type="text" name="board_token" placeholder="Slug (e.g. stripe) or full careers URL">
+      </div>
+      <div class="form-group flex-auto" style="align-self: flex-end;">
+        <button type="submit" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Company Portal
+        </button>
+      </div>
     </div>
-
-    <button type="submit" class="btn btn-primary">+ Add Company</button>
   </form>
 </div>
 
 <div class="card">
-  <h2>Tracked Companies ({{ companies|length }})</h2>
-  {% if companies %}
-  <form method="POST" action="{{ url_for('portals_search') }}">
-    <button type="submit" class="btn btn-auto">🔍 Search All Tracked Company Portals</button>
-  </form>
-  {% endif %}
+  <div class="card-header">
+    <div class="card-title">
+      Tracked Portals ({{ companies|length }})
+    </div>
+    {% if companies %}
+    <form method="POST" action="{{ url_for('portals_search') }}">
+      <button type="submit" class="btn btn-auto">
+        ⚡ Scan All Tracked Portals Now
+      </button>
+    </form>
+    {% endif %}
+  </div>
 
-  <table class="job-table">
-    <thead><tr><th>Company</th><th>Type</th><th>Source</th><th></th></tr></thead>
-    <tbody>
-      {% for company in companies %}
-      <tr>
-        <td>{{ company.display_name }}</td>
-        <td><span class="badge">{{ company.ats_type }}</span></td>
-        <td class="note">{{ company.board_token or company.career_url or '-' }}</td>
-        <td>
-          <form method="POST" action="{{ url_for('portals_delete', company_id=company.id) }}">
-            <button type="submit" class="btn btn-small">Remove</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4">No companies tracked yet — add one above.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-responsive">
+    <table class="job-table">
+      <thead>
+        <tr>
+          <th>Company Name</th>
+          <th>ATS Platform</th>
+          <th>Board Token / URL</th>
+          <th>Date Added</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for company in companies %}
+        <tr>
+          <td><strong>{{ company.display_name }}</strong></td>
+          <td>
+            <span class="badge badge-ats badge-{{ company.ats_type }}">
+              {{ company.ats_type }}
+            </span>
+          </td>
+          <td><code>{{ company.board_token or company.career_url or '—' }}</code></td>
+          <td style="font-size: 0.85rem; color: #64748b;">
+            {{ company.added_at.strftime("%Y-%m-%d") if company.added_at else '—' }}
+          </td>
+          <td style="text-align: right;">
+            <form method="POST" action="{{ url_for('portals_delete', company_id=company.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-small btn-danger" onclick="return confirm('Remove {{ company.display_name }} from tracked portals?');">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 40px; color: #64748b;">
+            No company portals tracked yet. Add your target companies above to index their jobs directly!
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}
