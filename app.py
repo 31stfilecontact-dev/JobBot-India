@@ -460,6 +460,8 @@ def resolve_and_teach(job_id):
     questions = request.form.getlist("question")
     answers = request.form.getlist("answer")
     scope = request.form.get("scope", "global") # global or company
+    mode = request.form.get("mode", "dry_run" if job.status == "dry_run" else "apply")
+    dry_run = (mode == "dry_run")
 
     target_company = job.company if scope == "company" else None
     learned_count = 0
@@ -474,15 +476,17 @@ def resolve_and_teach(job_id):
     db.session.commit()
 
     # Automatically re-attempt application with new memory
-    ok = _attempt_apply(job, dry_run=False)
+    ok = _attempt_apply(job, dry_run=dry_run)
     db.session.commit()
 
     if ok:
-        flash(f"Learned {learned_count} answers & successfully applied to {job.company}!")
+        action_str = "simulated dry-run" if dry_run else "submitted application"
+        flash(f"Learned {learned_count} answer(s) into Memory Bank & successfully {action_str} for {job.company}!")
     else:
-        flash(f"Learned {learned_count} answers into Memory Bank. Current attempt note: {job.notes}")
+        flash(f"Learned {learned_count} answer(s) into Memory Bank. Attempt outcome: {job.notes}")
 
     return redirect(request.referrer or url_for("index"))
+
 
 
 # ---------- Memory Bank Management ----------

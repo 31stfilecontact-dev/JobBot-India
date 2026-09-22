@@ -80,21 +80,36 @@
 
   <!-- In-app Resolve & Teach Memory Modal -->
   <div id="teachModal" class="modal-backdrop" onclick="closeTeachModal(event)">
-    <div class="modal-content" style="max-width: 600px; width: 100%;" onclick="event.stopPropagation()">
+    <div class="modal-content" style="max-width: 620px; width: 100%;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <strong id="teachModalTitle">💡 Teach Bot & Retry Application</strong>
         <button class="modal-close" onclick="closeTeachModal()">&times;</button>
       </div>
       <div class="modal-body" style="text-align: left;">
-        <p class="subtitle" style="margin-top:0;">Provide answers to the questions below. They will be saved to your Memory Bank and used to automatically auto-apply to this and future jobs.</p>
+        <p class="subtitle" style="margin-top:0;">Provide answers to any screening or custom application questions below. They will be saved to your Memory Bank so JobBot automatically answers them in future applications.</p>
         <form id="teachForm" method="POST" action="">
           <div id="teachFieldsContainer" style="display:flex; flex-direction:column; gap:12px;"></div>
+
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn btn-small btn-secondary" onclick="addCustomQuestionRow()">
+              + Add Another Question
+            </button>
+          </div>
           
-          <div style="margin-top:14px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
-            <label style="margin-bottom:4px; font-weight:600;">Memory Rule Scope:</label>
-            <div style="display:flex; gap:16px;">
-              <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="global" checked> Global (All Employers)</label>
-              <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="company"> This Company Only</label>
+          <div style="margin-top:14px; background:#f8fafc; padding:12px; border-radius:6px; border:1px solid #e2e8f0;">
+            <div style="margin-bottom:8px;">
+              <label style="margin-bottom:4px; font-weight:600; font-size:0.85rem;">Memory Rule Scope:</label>
+              <div style="display:flex; gap:16px; font-size:0.85rem;">
+                <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="global" checked> 🌐 Global (All Employers)</label>
+                <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="scope" value="company"> 🏢 This Company Only</label>
+              </div>
+            </div>
+            <div>
+              <label style="margin-bottom:4px; font-weight:600; font-size:0.85rem;">Retry Execution Mode:</label>
+              <div style="display:flex; gap:16px; font-size:0.85rem;">
+                <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="mode" value="dry_run" checked> 🧪 Simulation (Dry-Run)</label>
+                <label style="font-weight:normal; cursor:pointer;"><input type="radio" name="mode" value="apply"> ⚡ Live Submit</label>
+              </div>
             </div>
           </div>
 
@@ -122,6 +137,27 @@
       document.getElementById('modalImg').src = '';
     }
 
+    function addCustomQuestionRow(questionText, answerText) {
+      var container = document.getElementById('teachFieldsContainer');
+      var row = document.createElement('div');
+      row.style.background = '#f8fafc';
+      row.style.padding = '10px';
+      row.style.border = '1px solid #e2e8f0';
+      row.style.borderRadius = '6px';
+      row.style.position = 'relative';
+      
+      row.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-size:0.85rem; font-weight:600; color:#1e293b; margin:0;">Question / Requirement</label>
+          <button type="button" onclick="this.closest('div').parentElement.remove()" style="background:none; border:none; color:#ef4444; font-size:0.8rem; cursor:pointer;">&times; Remove</button>
+        </div>
+        <input type="text" name="question" value="${questionText || ''}" placeholder="e.g. What is your notice period? / Expected CTC" required style="margin-bottom:6px; font-size:0.85rem;">
+        <label style="font-size:0.85rem; font-weight:600; color:#1e293b; margin:0;">Your Answer</label>
+        <input type="text" name="answer" value="${answerText || ''}" placeholder="e.g. 30 days / 18 LPA / Yes" required style="margin-top:2px; font-size:0.85rem;">
+      `;
+      container.appendChild(row);
+    }
+
     function openTeachModal(jobId, jobTitle, company, fieldsJson) {
       var container = document.getElementById('teachFieldsContainer');
       container.innerHTML = '';
@@ -131,23 +167,26 @@
       } catch(e) {
         fields = [];
       }
-      if (!fields || fields.length === 0) {
-        fields = ["Custom Screening Question / Requirement"];
+      
+      if (fields && fields.length > 0) {
+        fields.forEach(function(field) {
+          var label = typeof field === 'object' && field !== null ? (field.label || field.name || 'Question') : field;
+          var row = document.createElement('div');
+          row.style.background = '#f8fafc';
+          row.style.padding = '10px';
+          row.style.border = '1px solid #e2e8f0';
+          row.style.borderRadius = '6px';
+          row.innerHTML = `
+            <label style="font-size:0.85rem; font-weight:600; color:#1e293b;">${label}</label>
+            <input type="hidden" name="question" value="${label}">
+            <input type="text" name="answer" placeholder="Enter your answer (e.g. Yes / 30 days / 15 LPA)" required style="margin-top:4px;">
+          `;
+          container.appendChild(row);
+        });
+      } else {
+        // Provide an editable question/answer row by default
+        addCustomQuestionRow("", "");
       }
-
-      fields.forEach(function(field) {
-        var row = document.createElement('div');
-        row.style.background = '#f8fafc';
-        row.style.padding = '10px';
-        row.style.border = '1px solid #e2e8f0';
-        row.style.borderRadius = '6px';
-        row.innerHTML = `
-          <label style="font-size:0.85rem; color:#1e293b;">${field}</label>
-          <input type="hidden" name="question" value="${field}">
-          <input type="text" name="answer" placeholder="Enter your answer (e.g. Yes / 30 days / 15 LPA)" required style="margin-top:4px;">
-        `;
-        container.appendChild(row);
-      });
 
       document.getElementById('teachModalTitle').innerText = '💡 Teach Bot: ' + jobTitle + ' (' + company + ')';
       document.getElementById('teachForm').action = '/job/' + jobId + '/resolve';
