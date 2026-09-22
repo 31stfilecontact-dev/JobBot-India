@@ -104,3 +104,13 @@ def test_memory_bank_resolution():
         assert ans_global == "Yes, open to rotational shifts"
 
 
+def test_linkedin_apply_mock(mocker):
+    from autofill.linkedin_apply import apply_linkedin
+    mocker.patch("autofill.linkedin_apply.sync_playwright", side_effect=Exception("Mocked Playwright context"))
+    profile = {"full_name": "Aman Mehta", "email": "aman@example.com"}
+    ok, note, screenshot, unanswered = apply_linkedin("https://in.linkedin.com/jobs/view/12345", profile, None, dry_run=True)
+    assert ok is False
+    assert "Mocked Playwright context" in note
+
+
+

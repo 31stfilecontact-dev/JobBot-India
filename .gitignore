@@ -71,6 +71,8 @@ uploads/*
 !uploads/.gitkeep
 artifacts/screenshots/*
 !artifacts/screenshots/.gitkeep
+artifacts/linkedin_auth.json
+
 
 
 

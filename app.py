@@ -43,6 +43,8 @@ from autofill.workday import apply_workday
 from autofill.smartrecruiters import apply_smartrecruiters
 from autofill.ashby import apply_ashby
 from autofill.emailer import send_application_email
+from autofill.linkedin_apply import apply_linkedin
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -331,6 +333,11 @@ def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
     elif job.ats_type == "ashby":
         ok, note, screenshot_file, unanswered_fields = apply_ashby(job.career_page_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx)
         apply_method = "ats_ashby"
+    elif job.source == "linkedin" or (job.job_url and "linkedin.com" in job.job_url):
+        ok, note, screenshot_file, unanswered_fields = apply_linkedin(
+            job.job_url, profile_dict, resume_path, dry_run=dry_run, job_context=job_ctx
+        )
+        apply_method = "linkedin_auto"
     else:
         # Email fallback
         hr_email = job.hr_email or extract_email(job.career_page_url)
@@ -341,6 +348,7 @@ def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
         else:
             note = "No ATS form detected and no HR email found on career page."
             apply_method = "manual_required"
+
 
     # Update job record
     job.apply_method = apply_method
