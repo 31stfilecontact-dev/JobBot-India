@@ -142,3 +142,23 @@ def test_job_resolve_route(client, mocker):
         assert mem.company == "Zepto"
 
 
+def test_api_progress(client):
+
+    res = client.get("/api/progress")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert "is_running" in data
+    assert "percent" in data
+    assert "success_count" in data
+    assert "fail_count" in data
+
+
+def test_auto_apply_endpoint(client, mocker):
+    mocker.patch("app._attempt_apply", return_value=True)
+    res = client.post("/auto_apply", json={"mode": "dry_run"}, headers={"X-Requested-With": "XMLHttpRequest"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "started"
+    assert data["dry_run"] is True
+
+

@@ -105,27 +105,15 @@ def query_memory_bank(field_label: str, company: str = None, ats_type: str = Non
             # Exact keyword in label check
             clean_pattern = _normalize_text(mem.question_pattern)
             if clean_pattern and (clean_pattern in norm_label or norm_label in clean_pattern):
-                mem.times_used = (mem.times_used or 0) + 1
-                mem.last_used_at = datetime.utcnow()
-                try:
-                    db.session.commit()
-                except Exception:
-                    pass
                 return mem.answer_value
 
             # Fuzzy token overlap check
             score = _token_overlap_score(field_label, mem.question_pattern)
-            if score > 0.4 and score > highest_score:
+            if score > 0.35 and score > highest_score:
                 highest_score = score
                 best_match = mem
 
-        if best_match and highest_score >= 0.4:
-            best_match.times_used = (best_match.times_used or 0) + 1
-            best_match.last_used_at = datetime.utcnow()
-            try:
-                db.session.commit()
-            except Exception:
-                pass
+        if best_match and highest_score >= 0.35:
             return best_match.answer_value
 
     except Exception as e:

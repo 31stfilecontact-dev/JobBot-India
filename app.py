@@ -2,11 +2,14 @@ import os
 import json
 import logging
 import sqlite3
+import threading
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -51,7 +54,7 @@ app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "jobbot.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "connect_args": {"timeout": 30, "check_same_thread": False}
+    "connect_args": {"timeout": 60, "check_same_thread": False}
 }
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
 app.logger.setLevel(logging.INFO)
@@ -59,16 +62,84 @@ app.logger.setLevel(logging.INFO)
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Enable SQLite WAL mode and busy timeout to avoid 'database is locked' errors."""
+    """Enable SQLite WAL mode and 60s busy timeout to avoid 'database is locked' errors."""
     if isinstance(dbapi_connection, sqlite3.Connection):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA busy_timeout=60000")
         cursor.close()
 
 
 db.init_app(app)
+
+
+class TaskProgress:
+    """Thread-safe background progress tracker for auto-apply and scraping."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.is_running = False
+        self.task_type = ""
+        self.total = 0
+        self.current = 0
+        self.success_count = 0
+        self.fail_count = 0
+        self.current_title = ""
+        self.current_company = ""
+        self.message = ""
+        self.started_at = None
+
+    def start(self, task_type: str, total: int, message: str = ""):
+        with self._lock:
+            self.is_running = True
+            self.task_type = task_type
+            self.total = total
+            self.current = 0
+            self.success_count = 0
+            self.fail_count = 0
+            self.current_title = ""
+            self.current_company = ""
+            self.message = message
+            self.started_at = time.time()
+
+    def update(self, current: int, title: str = "", company: str = "", success: bool = None, note: str = ""):
+        with self._lock:
+            self.current = current
+            if title:
+                self.current_title = title
+            if company:
+                self.current_company = company
+            if success is True:
+                self.success_count += 1
+            elif success is False:
+                self.fail_count += 1
+            if note:
+                self.message = note
+
+    def finish(self, message: str = "Completed"):
+        with self._lock:
+            self.is_running = False
+            self.current = self.total
+            self.message = message
+
+    def to_dict(self):
+        with self._lock:
+            pct = int((self.current / self.total * 100)) if self.total > 0 else 0
+            return {
+                "is_running": self.is_running,
+                "task_type": self.task_type,
+                "total": self.total,
+                "current": self.current,
+                "percent": min(100, pct),
+                "success_count": self.success_count,
+                "fail_count": self.fail_count,
+                "current_title": self.current_title,
+                "current_company": self.current_company,
+                "message": self.message,
+            }
+
+progress_tracker = TaskProgress()
+
 
 
 def ensure_sqlite_schema():
@@ -114,20 +185,24 @@ def ensure_sqlite_schema():
         db.session.commit()
 
 
-with app.app_context():
-    db.create_all()
-    ensure_sqlite_schema()
-    if not Profile.query.first():
-        db.session.add(Profile(
-            full_name="Aman Mehta",
-            email="amanmehta080799@gmail.com",
-            phone="+91 9876543210",
-            current_city="Bengaluru",
-            keywords="Software Engineer, Python Developer, Backend Engineer",
-            preferred_cities="Bengaluru, Hyderabad, Pune, Remote",
-            smtp_email="amanmehta080799@gmail.com",
-        ))
-        db.session.commit()
+try:
+    with app.app_context():
+        db.create_all()
+        ensure_sqlite_schema()
+        if not Profile.query.first():
+            db.session.add(Profile(
+                full_name="Aman Mehta",
+                email="amanmehta080799@gmail.com",
+                phone="+91 9876543210",
+                current_city="Bengaluru",
+                keywords="Software Engineer, Python Developer, Backend Engineer",
+                preferred_cities="Bengaluru, Hyderabad, Pune, Remote",
+                smtp_email="amanmehta080799@gmail.com",
+            ))
+            db.session.commit()
+except Exception as e:
+    app.logger.warning(f"DB startup init: {e}")
+
 
 
 def get_profile() -> Profile:
@@ -295,21 +370,55 @@ def _attempt_apply(job: Job, dry_run: bool = False) -> bool:
         screenshot_file=screenshot_file,
     )
     db.session.add(audit)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"[apply] Commit error for job {job.id}: {e}")
     return ok
 
 
-def run_auto_apply(dry_run: bool = False):
-    """Batch apply/dry-run on all new jobs."""
-    jobs = Job.query.filter_by(status="new").all()
-    results = {"applied": 0, "failed": 0, "dry_run": 0}
-    for job in jobs:
-        ok = _attempt_apply(job, dry_run=dry_run)
-        if dry_run:
-            results["dry_run" if ok else "failed"] += 1
-        else:
-            results["applied" if ok else "failed"] += 1
-    db.session.commit()
-    return results
+def run_auto_apply(dry_run: bool = False, async_mode: bool = False):
+    """Batch apply/dry-run on all new jobs with atomic commits and progress tracking."""
+    def _worker():
+        with app.app_context():
+            job_ids = [j.id for j in Job.query.filter_by(status="new").all()]
+            total = len(job_ids)
+            progress_tracker.start(
+                task_type="dry_run" if dry_run else "apply",
+                total=total,
+                message=f"Starting {'Dry-Run' if dry_run else 'Auto-Apply'} for {total} new jobs..."
+            )
+            results = {"applied": 0, "failed": 0, "dry_run": 0}
+            for idx, j_id in enumerate(job_ids, 1):
+                try:
+                    job = db.session.get(Job, j_id)
+                    if not job or job.status != "new":
+                        continue
+                    progress_tracker.update(idx - 1, title=job.title, company=job.company, note=f"Processing {job.title} at {job.company}...")
+                    ok = _attempt_apply(job, dry_run=dry_run)
+                    if dry_run:
+                        results["dry_run" if ok else "failed"] += 1
+                    else:
+                        results["applied" if ok else "failed"] += 1
+                    outcome_tag = "Simulated" if dry_run else "Applied"
+                    progress_tracker.update(idx, title=job.title, company=job.company, success=ok, note=f"{outcome_tag} {idx}/{total}: {job.title}")
+                except Exception as e:
+                    app.logger.error(f"[auto_apply] Error on job {j_id}: {e}")
+                    progress_tracker.update(idx, success=False, note=f"Error: {str(e)[:40]}")
+            
+            progress_tracker.finish(message=f"Completed {total} applications.")
+            return results
+
+    if async_mode and not app.config.get("TESTING"):
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        return {"status": "started", "total": Job.query.filter_by(status="new").count()}
+    else:
+        _worker()
+        return {"status": "started", "total": Job.query.filter_by(status="new").count()}
+
+
 
 
 def run_scheduled_automation():
@@ -410,42 +519,63 @@ def search():
     return redirect(url_for("index"))
 
 
+@app.route("/api/progress", methods=["GET"])
+def api_progress():
+    """Return JSON status of the background task and progress bar."""
+    return jsonify(progress_tracker.to_dict())
+
+
 @app.route("/apply/<int:job_id>", methods=["POST"])
 def apply_single(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.session.get(Job, job_id)
+    if not job:
+        abort(404)
     _attempt_apply(job, dry_run=False)
-    db.session.commit()
     flash(f"Apply finished for '{job.title}' at {job.company}: {job.notes}")
     return redirect(url_for("index"))
 
 
 @app.route("/dry_run/<int:job_id>", methods=["POST"])
 def dry_run_single(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.session.get(Job, job_id)
+    if not job:
+        abort(404)
     _attempt_apply(job, dry_run=True)
-    db.session.commit()
     flash(f"Dry-run executed for '{job.title}' at {job.company}: {job.notes}")
     return redirect(url_for("index"))
 
 
 @app.route("/skip/<int:job_id>", methods=["POST"])
 def skip(job_id):
-    job = Job.query.get_or_404(job_id)
+    job = db.session.get(Job, job_id)
+    if not job:
+        abort(404)
     job.status = "skipped"
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     return redirect(url_for("index"))
 
 
 @app.route("/auto_apply", methods=["POST"])
 def auto_apply():
-    mode = request.form.get("mode", "apply")
+    mode = request.form.get("mode") or (request.get_json(silent=True) or {}).get("mode", "apply")
     dry_run = (mode == "dry_run")
-    results = run_auto_apply(dry_run=dry_run)
-    if dry_run:
-        flash(f"Auto-Apply Dry Run finished — {results['dry_run']} simulated, {results['failed']} failed.")
+    is_async = (
+        request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.form.get("async") == "1"
+    )
+    if is_async:
+        run_auto_apply(dry_run=dry_run, async_mode=True)
+        return jsonify({"status": "started", "dry_run": dry_run})
     else:
-        flash(f"Auto-apply run finished — {results['applied']} applied, {results['failed']} failed.")
-    return redirect(url_for("index"))
+        run_auto_apply(dry_run=dry_run, async_mode=True)
+        flash(f"{'Dry-run' if dry_run else 'Live auto-apply'} started in the background. Watch the progress bar below!")
+        return redirect(url_for("index"))
+
+
 
 
 # ---------- Resolve & Teach Memory ----------

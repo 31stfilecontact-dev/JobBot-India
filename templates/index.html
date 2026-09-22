@@ -136,9 +136,41 @@
     </div>
   </form>
 
+  <!-- Live Progress Bar Banner -->
+  <div id="liveProgressBar" class="progress-banner" style="display: none;">
+    <div class="progress-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="spinner-icon" style="font-size: 1.2rem;">⚡</span>
+        <div>
+          <strong id="progressTitle" style="font-size: 0.95rem; color: #0f172a;">Auto-Apply in Progress...</strong>
+          <span id="progressSubtitle" class="text-muted" style="margin-left: 6px; font-size: 0.85rem;"></span>
+        </div>
+      </div>
+      <div class="progress-stats">
+        <span class="badge badge-applied" style="background:#ecfdf5; color:#065f46; font-size:0.8rem;">
+          ✅ <span id="progressSuccess">0</span> Success
+        </span>
+        <span class="badge badge-failed" style="background:#fef2f2; color:#991b1b; font-size:0.8rem;">
+          ❌ <span id="progressFailed">0</span> Failed
+        </span>
+        <strong id="progressPercent" style="color: var(--primary); font-size: 0.9rem; margin-left: 4px;">0%</strong>
+        <span class="text-muted" id="progressFraction" style="font-size: 0.8rem;">(0/0)</span>
+      </div>
+    </div>
+    <div class="progress-bar-container">
+      <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+    </div>
+    <div class="progress-status-text">
+      <span id="progressCurrentJob" style="color: #334155; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%;">
+        Starting automation worker...
+      </span>
+      <span id="progressStatusMessage" style="color: #64748b; font-size: 0.8rem;"></span>
+    </div>
+  </div>
+
   <!-- Batch Action Banner -->
   {% if status_filter == 'new' and jobs %}
-  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: #fff7ed; border: 1px solid #fed7aa; padding: 12px 18px; border-radius: var(--radius); margin-bottom: 18px;">
+  <div id="batchActionBanner" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: #fff7ed; border: 1px solid #fed7aa; padding: 12px 18px; border-radius: var(--radius); margin-bottom: 18px;">
     <div style="display:flex; align-items:center; gap:8px;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       <div>
@@ -147,21 +179,16 @@
       </div>
     </div>
     <div style="display:flex; gap:10px;">
-      <form method="POST" action="{{ url_for('auto_apply') }}">
-        <input type="hidden" name="mode" value="dry_run">
-        <button type="submit" class="btn btn-secondary" title="Fills form & captures screenshot without submitting">
-          🧪 Dry-Run All (Preview)
-        </button>
-      </form>
-      <form method="POST" action="{{ url_for('auto_apply') }}" onsubmit="return confirm('Launch live auto-apply on all {{ jobs|length }} jobs?');">
-        <input type="hidden" name="mode" value="apply">
-        <button type="submit" class="btn btn-auto">
-          ⚡ Run Live Auto-Apply
-        </button>
-      </form>
+      <button type="button" class="btn btn-secondary" onclick="triggerBatchApply('dry_run')" title="Fills form & captures screenshot without submitting">
+        🧪 Dry-Run All (Preview)
+      </button>
+      <button type="button" class="btn btn-auto" onclick="if(confirm('Launch live auto-apply on all {{ jobs|length }} jobs?')) triggerBatchApply('apply');">
+        ⚡ Run Live Auto-Apply
+      </button>
     </div>
   </div>
   {% endif %}
+
 
   <!-- Jobs Table -->
   <div class="table-responsive">
@@ -251,6 +278,8 @@
 </div>
 
 <script>
+  var progressTimer = null;
+
   function applyPreset(kw, cities) {
     document.getElementById('keywordsInput').value = kw;
     document.getElementById('citiesInput').value = cities;
@@ -264,6 +293,86 @@
       row.style.display = text.indexOf(query) !== -1 ? '' : 'none';
     });
   }
+
+  function triggerBatchApply(mode) {
+    var banner = document.getElementById('liveProgressBar');
+    banner.style.display = 'block';
+    document.getElementById('progressTitle').innerText = mode === 'dry_run' ? '🧪 Dry-Run Simulation Running...' : '⚡ Live Auto-Apply Running...';
+    document.getElementById('progressBarFill').style.width = '3%';
+    document.getElementById('progressCurrentJob').innerText = 'Starting background worker...';
+
+    var formData = new FormData();
+    formData.append('mode', mode);
+    formData.append('async', '1');
+
+    fetch('/auto_apply', {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      startProgressPolling();
+    })
+    .catch(function(err) {
+      console.error('Failed to launch async auto-apply:', err);
+      startProgressPolling();
+    });
+  }
+
+  function startProgressPolling() {
+    if (progressTimer) clearInterval(progressTimer);
+    checkProgress();
+    progressTimer = setInterval(checkProgress, 800);
+  }
+
+  function checkProgress() {
+    fetch('/api/progress')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var banner = document.getElementById('liveProgressBar');
+        if (!data || !banner) return;
+
+        if (data.is_running || (data.total > 0 && data.current > 0 && data.percent < 100)) {
+          banner.style.display = 'block';
+          document.getElementById('progressBarFill').style.width = Math.max(3, data.percent) + '%';
+          document.getElementById('progressPercent').innerText = data.percent + '%';
+          document.getElementById('progressSuccess').innerText = data.success_count;
+          document.getElementById('progressFailed').innerText = data.fail_count;
+          document.getElementById('progressFraction').innerText = '(' + data.current + '/' + data.total + ')';
+          
+          if (data.current_title) {
+            document.getElementById('progressCurrentJob').innerText = 'Evaluating: ' + data.current_title + (data.current_company ? ' (' + data.current_company + ')' : '');
+          }
+          document.getElementById('progressStatusMessage').innerText = data.message || '';
+        } else if (!data.is_running && data.total > 0 && data.current >= data.total) {
+          // Finished
+          banner.style.display = 'block';
+          document.getElementById('progressBarFill').style.width = '100%';
+          document.getElementById('progressPercent').innerText = '100%';
+          document.getElementById('progressSuccess').innerText = data.success_count;
+          document.getElementById('progressFailed').innerText = data.fail_count;
+          document.getElementById('progressFraction').innerText = '(' + data.total + '/' + data.total + ')';
+          document.getElementById('progressCurrentJob').innerText = '✅ Batch processing complete! Reloading table...';
+          
+          if (progressTimer) {
+            clearInterval(progressTimer);
+            progressTimer = null;
+          }
+          setTimeout(function() {
+            window.location.reload();
+          }, 1500);
+        }
+      })
+      .catch(function(err) {
+        console.warn('Progress poll error:', err);
+      });
+  }
+
+  // Check progress on page load in case a task is already running
+  document.addEventListener('DOMContentLoaded', function() {
+    checkProgress();
+  });
 </script>
 
 {% endblock %}
