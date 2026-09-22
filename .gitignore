@@ -65,9 +65,12 @@ develop-eggs/
 dist/
 
 # JobBot runtime data
-jobbot.db
+.env
+jobbot.db*
 uploads/*
 !uploads/.gitkeep
 artifacts/screenshots/*
 !artifacts/screenshots/.gitkeep
+
+
 
